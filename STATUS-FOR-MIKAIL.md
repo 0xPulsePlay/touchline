@@ -110,6 +110,22 @@ Then: open the home page → click into England–Argentina → Faucet 100 → B
    the barrier. (An `epoch` seed would make them re-runnable.)
 6. **Resolve NO-side** works but has no optimistic-challenge timer (resolver attests instantly).
 
+## Multi-agent notes (resolved)
+
+- **Home page collision resolved.** The task got broadcast to several agents, so two home
+  implementations briefly coexisted. They've been consolidated to one clean version (shared
+  `AppBar`, hash `router.tsx`, `home/` tiles/sparklines) — typecheck is clean, no leftover
+  duplicates, browser-verified. Nothing to do here.
+- **Favorite badge on finished tiles** is derived from the probability *path's* last point (the
+  90-minute 1X2 market), not the scoreline. For knockouts decided in extra time (e.g. a match level
+  at 90' then won in ET), the badge can read "🤝 Draw ~95%" next to a decisive aggregate score.
+  This is faithful to the data and on-thesis (options on the probability path), and the scoreline is
+  shown separately — but if you'd prefer the badge reconciled to the eventual winner for ET matches,
+  it's a small change.
+- **Fixed a transient server 500** the web verification caught: the `/api/fixtures/:id/path` route
+  now wraps its SDK calls and returns a clean 503 on an upstream hiccup (the sim/live poller already
+  retries), instead of an unhandled 500 during heavy concurrent load.
+
 ## Verification state
 
 `pnpm -r typecheck` clean · `pnpm --filter @touchline/server test` = **33 passing** (pricing, touch,
