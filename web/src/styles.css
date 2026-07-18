@@ -276,3 +276,131 @@ details.receipt[open] summary::after { content: " · hide"; }
 .livebar .livelabel { font-size: 0.8rem; font-weight: 700; color: var(--live); flex: 1; }
 .livebar .speeds { display: flex; gap: 6px; }
 .livebar .btn2.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* ══════════════════════════════════════════════════════
+   home / path-picker
+   ══════════════════════════════════════════════════════ */
+
+/* brand becomes a home link (was an <h1>) + reusable live dot */
+a.brand { font-family: Futura, "Century Gothic", "Trebuchet MS", "Avenir Next", sans-serif;
+  text-decoration: none; color: inherit; cursor: pointer; }
+a.brand:hover { opacity: 0.82; }
+.appbar-tag { font-family: Charter, Georgia, serif; font-style: italic; font-size: 0.8rem; color: var(--ink-3); }
+@media (max-width: 560px) { .appbar-tag { display: none; } }
+.livedot { width: 7px; height: 7px; border-radius: 50%; background: var(--live);
+  animation: pulse 1.6s infinite; flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .livedot { animation: none; } }
+
+.home { max-width: 1200px; margin: 0 auto; padding: 4px 14px 72px; }
+@media (min-width: 900px) { .home { padding: 14px 30px 80px; } }
+
+/* ── hero ───────────────────────────────────────────── */
+.hero { padding: 26px 4px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+@media (min-width: 900px) { .hero { padding: 40px 4px 20px; } }
+.hero-title { font-size: clamp(1.9rem, 6vw, 3.1rem); line-height: 1.04; font-weight: 700;
+  letter-spacing: -0.01em; margin: 0; }
+.hero-title .hl { color: var(--pitch); box-shadow: inset 0 -0.14em 0 color-mix(in srgb, var(--pitch) 22%, transparent); }
+.hero-sub { font-size: clamp(0.95rem, 2.4vw, 1.12rem); color: var(--ink-2); max-width: 60ch;
+  margin: 12px 0 0; line-height: 1.5; }
+.hero-stat { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 16px;
+  font-size: 0.72rem; color: var(--ink-3); }
+.hero-stat > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  letter-spacing: 0.04em; text-transform: uppercase; }
+.hero-stat .hs.live { color: var(--live); border-color: color-mix(in srgb, var(--live) 40%, var(--line)); font-weight: 700; }
+
+/* ── section headers ────────────────────────────────── */
+.hsection { margin-top: 30px; }
+.hsec-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+.hsec-head h2 { font-family: Futura, "Century Gothic", sans-serif; font-size: 0.74rem;
+  letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700; color: var(--ink-2); margin: 0; }
+.hsec-head.live h2 { color: var(--live); }
+.hsec-count { font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem; color: var(--ink-3);
+  background: var(--surface-2); border-radius: 999px; padding: 2px 9px; }
+
+/* ── tile grid ──────────────────────────────────────── */
+.tilegrid { display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+@media (min-width: 900px) { .tilegrid { gap: 16px; } }
+
+/* ── tile ───────────────────────────────────────────── */
+.tile {
+  display: flex; flex-direction: column; gap: 10px; min-height: 168px;
+  padding: 14px 15px 13px; text-decoration: none; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.tile:hover { transform: translateY(-3px); border-color: var(--pitch);
+  box-shadow: 0 10px 26px -14px color-mix(in srgb, var(--pitch) 55%, transparent); }
+.tile:active { transform: translateY(-1px); }
+.tile:focus-visible { outline: 2px solid var(--pitch); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .tile:hover { transform: none; } }
+
+.tile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tile-comp { font-family: Futura, "Century Gothic", sans-serif; font-size: 0.6rem;
+  letter-spacing: 0.13em; text-transform: uppercase; font-weight: 700; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-status { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem; color: var(--ink-2); }
+.tile-status.live { color: var(--live); font-weight: 700; letter-spacing: 0.06em; }
+.tile-status.upcoming { color: var(--pitch); }
+
+.tile-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.tile-teams .tt { font-size: 0.98rem; font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-teams .tt.r { text-align: right; }
+.tile-teams .fl { font-size: 1.06rem; }
+.tile-mid { font-size: 0.86rem; font-weight: 700; color: var(--ink-3); text-align: center;
+  font-variant-numeric: tabular-nums; }
+
+.tile-viz { height: 62px; display: flex; align-items: center; }
+.spark { width: 100%; height: 100%; display: block; }
+.spark-mid { stroke: var(--line-soft); stroke-width: 1; }
+.spark-line { stroke-width: 1.25; opacity: 0.5; }
+.spark-line.emph { stroke-width: 2.1; opacity: 1; }
+.tile:hover .spark-line { opacity: 0.72; }
+.tile:hover .spark-line.emph { opacity: 1; }
+.spark-skel { width: 100%; height: 40px; border-radius: 8px;
+  background: linear-gradient(100deg, var(--surface-2) 30%, var(--line-soft) 50%, var(--surface-2) 70%);
+  background-size: 220% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { from { background-position: 140% 0; } to { background-position: -40% 0; } }
+@media (prefers-reduced-motion: reduce) { .spark-skel { animation: none; } }
+
+/* pre-match 3-segment bar (upcoming) */
+.prebar-wrap { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.prebar { display: flex; height: 16px; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
+.prebar .pseg { height: 100%; }
+.prebar .pseg.s1 { background: var(--home); }
+.prebar .pseg.sd { background: var(--draw); }
+.prebar .pseg.s2 { background: var(--away); }
+.prebar-live { display: inline-flex; align-items: center; gap: 6px; font-size: 0.66rem;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3);
+  font-family: Futura, "Century Gothic", sans-serif; font-weight: 700; }
+
+/* tile footer: favorite badge + call-to-action */
+.tile-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: auto; padding-top: 2px; }
+.tile-fav { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.86rem;
+  font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums;
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); }
+.tile-fav.side-part1 { color: var(--home); border-color: color-mix(in srgb, var(--home) 35%, var(--line)); }
+.tile-fav.side-draw  { color: var(--draw); border-color: color-mix(in srgb, var(--draw) 35%, var(--line)); }
+.tile-fav.side-part2 { color: var(--away); border-color: color-mix(in srgb, var(--away) 35%, var(--line)); }
+.tile-fav.muted { color: var(--ink-3); }
+.tile-go { font-family: Futura, "Century Gothic", sans-serif; font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.04em; color: var(--ink-3); opacity: 0; transform: translateX(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease; white-space: nowrap; }
+.tile:hover .tile-go { opacity: 1; transform: none; color: var(--pitch); }
+@media (hover: none) { .tile-go { opacity: 1; transform: none; } }
+
+/* live tile accent */
+.tile.g-live { border-color: color-mix(in srgb, var(--live) 32%, var(--line)); }
+.tile.g-live:hover { border-color: var(--live);
+  box-shadow: 0 10px 26px -14px color-mix(in srgb, var(--live) 55%, transparent); }
+
+/* show-all toggle */
+.showall { display: block; width: 100%; margin-top: 16px; padding: 13px; min-height: 44px;
+  border: 1px dashed var(--line); border-radius: 12px; background: none; cursor: pointer;
+  font-family: Futura, "Century Gothic", sans-serif; font-size: 0.78rem; font-weight: 700;
+  letter-spacing: 0.05em; color: var(--ink-2); }
+.showall:hover { border-color: var(--pitch); color: var(--pitch); border-style: solid; }

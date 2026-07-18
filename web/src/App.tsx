@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Calibration, type Fixture, type Market, type PathResponse, type Quote, type Side } from "./api.js";
 import { flag } from "./flags.js";
+import { groupOf, GROUP_META, type Group } from "./groups.js";
 import { PathChart } from "./PathChart.js";
 import { buildScale } from "./timeline.js";
 import { connectWallet, disconnectWallet, rememberedWallet, shortKey } from "./wallet.js";
@@ -10,19 +11,6 @@ const fmtDay = (ts: number) =>
   " · " + new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
 const pct = (v: number, dp = 1) => `${(v * 100).toFixed(dp)}%`;
-
-type Group = "live" | "upcoming" | "finished";
-function groupOf(f: Fixture, now: number): Group {
-  if (f.startTime > now) return "upcoming";
-  if (!f.isFinal && now - f.startTime < 5 * 3600_000) return "live";
-  return "finished";
-}
-
-const GROUP_META: Record<Group, { label: string; live?: boolean }> = {
-  live: { label: "Live now", live: true },
-  upcoming: { label: "Upcoming" },
-  finished: { label: "Finished" },
-};
 
 function FixtureRow({ f, sel, onPick, group }: { f: Fixture; sel: boolean; onPick: (f: Fixture) => void; group: Group }) {
   return (
@@ -66,7 +54,7 @@ function GroupedList({ fixtures, sel, onPick, filter }: {
   );
 }
 
-export function App() {
+export function App({ fixtureId }: { fixtureId?: number }) {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [filter, setFilter] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -93,16 +81,21 @@ export function App() {
   const raf = useRef(0);
 
   useEffect(() => {
-    api.fixtures().then((fx) => {
-      setFixtures(fx);
-      const now = Date.now();
-      const live = fx.filter((f) => groupOf(f, now) === "live").sort((a, b) => a.startTime - b.startTime)[0];
-      const pick = live ?? fx.find((f) => f.fixtureId === 18241006) ?? fx.find((f) => f.isFinal) ?? fx[0] ?? null;
-      if (pick) select(pick);
-    }).catch((e) => setErr(String(e)));
+    api.fixtures().then(setFixtures).catch((e) => setErr(String(e)));
     api.calibration().then(setCal).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Route-driven selection: the hash (#/m/<id>) picks the fixture; fall back to a sensible default. */
+  useEffect(() => {
+    if (!fixtures.length) return;
+    const now = Date.now();
+    const routed = fixtureId != null ? fixtures.find((f) => f.fixtureId === fixtureId) : undefined;
+    const pick = routed
+      ?? fixtures.filter((f) => groupOf(f, now) === "live").sort((a, b) => a.startTime - b.startTime)[0]
+      ?? fixtures.find((f) => f.isFinal) ?? fixtures[0];
+    if (pick && pick.fixtureId !== sel?.fixtureId) select(pick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixtures, fixtureId]);
 
   const select = useCallback((f: Fixture) => {
     setSel(f);
@@ -120,6 +113,9 @@ export function App() {
     }).catch((e) => setErr(String(e)));
     api.markets(f.fixtureId).then(setMarkets).catch(() => {});
   }, []);
+
+  /** In-market fixture switching now navigates by hash so the URL stays the source of truth. */
+  const pick = useCallback((f: Fixture) => { setSheetOpen(false); window.location.hash = `#/m/${f.fixtureId}`; }, []);
 
   const isLive = sel ? groupOf(sel, Date.now()) === "live" : false;
   const simActive = !!simUi;
@@ -302,7 +298,7 @@ export function App() {
   return (
     <>
       <header className="appbar">
-        <h1 className="brand">TOUCH<span className="tick">LINE</span></h1>
+        <a className="brand" href="#/">TOUCH<span className="tick">LINE</span></a>
         <div className="spacer" />
         <button className={`walletbtn${wallet ? " connected" : ""}`} onClick={toggleWallet}
           title={wallet ? "Disconnect" : "Connect Phantom"}>
@@ -316,7 +312,7 @@ export function App() {
             <input placeholder="Search teams…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="search fixtures" />
           </div>
           <div className="lists">
-            <GroupedList fixtures={fixtures} sel={sel} onPick={select} filter={filter} />
+            <GroupedList fixtures={fixtures} sel={sel} onPick={pick} filter={filter} />
           </div>
         </aside>
 
@@ -558,7 +554,7 @@ export function App() {
                 aria-label="search fixtures" autoFocus />
             </div>
             <div className="lists">
-              <GroupedList fixtures={fixtures} sel={sel} onPick={select} filter={filter} />
+              <GroupedList fixtures={fixtures} sel={sel} onPick={pick} filter={filter} />
             </div>
           </div>
         </>
