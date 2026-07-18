@@ -3,7 +3,7 @@ import type { Fixture, PathPoint } from "../api.js";
 import type { Group } from "../groups.js";
 import { flag } from "../flags.js";
 import { Sparkline } from "./Sparkline.js";
-import { code, countdown, favouriteOf, fmtKickoff, fmtTicks, loadPath, sideName } from "./util.js";
+import { code, countdown, favouriteOf, fmtKickoff, fmtTicks, loadPath, sideName, SIDE_COLOR } from "./util.js";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -44,13 +44,21 @@ export function FixtureTile({
   const favName = fav ? sideName(f, fav.side) : "";
   const pct = fav ? Math.round(fav.value) : null;
 
-  const winner = f.isFinal && f.finalP1 != null && f.finalP2 != null
+  const winner: "part1" | "part2" | "draw" | null = f.isFinal && f.finalP1 != null && f.finalP2 != null
     ? f.finalP1 > f.finalP2 ? "part1" : f.finalP2 > f.finalP1 ? "part2" : "draw"
     : null;
 
-  const badgeText = fav
-    ? fav.side === "draw" ? `🤝 Draw ${pct}%` : `${flag(favName)} ${code(favName)} ${pct}%`
-    : null;
+  // The tile's emphasis (sparkline + badge): for a FINISHED match, the actual result (winner) —
+  // never the 90-minute path's last point, which can read "Draw" for a match decided in extra time.
+  // For live/upcoming, the current favourite from the probability path.
+  const emphasis = f.isFinal ? winner : fav?.side ?? null;
+
+  const badgeText = f.isFinal
+    ? winner === "draw" ? "🤝 Draw"
+      : winner ? `${flag(sideName(f, winner))} ${code(sideName(f, winner))} won` : null
+    : fav
+      ? fav.side === "draw" ? `🤝 Draw ${pct}%` : `${flag(favName)} ${code(favName)} ${pct}%`
+      : null;
 
   const aria = `${f.participant1} versus ${f.participant2}, ${f.competition}. ${
     group === "live" ? "Live now." : group === "finished"
@@ -70,7 +78,7 @@ export function FixtureTile({
       ref={ref}
       href={`#/m/${f.fixtureId}`}
       className="tl-tile"
-      style={{ ["--i" as string]: Math.min(index, 14), ...(fav ? { ["--fav" as string]: fav.color } : {}) }}
+      style={{ ["--i" as string]: Math.min(index, 14), ...(emphasis ? { ["--fav" as string]: SIDE_COLOR[emphasis] } : fav ? { ["--fav" as string]: fav.color } : {}) }}
       aria-label={aria}
     >
       <div className="tl-top">
@@ -94,7 +102,7 @@ export function FixtureTile({
 
       <div className="tl-chart">
         {state === "ready" && path && path.length >= 2 && fav ? (
-          <Sparkline path={path} side={fav.side} />
+          <Sparkline path={path} side={emphasis ?? fav.side} />
         ) : state === "error" ? (
           <div className="tl-chart-empty mono">path unavailable</div>
         ) : state === "ready" ? (

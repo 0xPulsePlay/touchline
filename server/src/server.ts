@@ -14,6 +14,11 @@ import { startBots } from "./chain/bots.js";
 const app = Fastify({ logger: { level: "info" } });
 await app.register(cors, { origin: true, methods: ["GET", "POST"] });
 
+// Demo stability: never let a stray rejection/exception (e.g. a transient validator RPC error in
+// the bot loop) silently kill the whole server. Log and keep serving.
+process.on("unhandledRejection", (e) => app.log.error({ err: String(e) }, "unhandledRejection"));
+process.on("uncaughtException", (e) => app.log.error({ err: String(e) }, "uncaughtException"));
+
 /** Calibration is corpus-wide and cached; the pricing discount derives from it. */
 let calibration = loadOrComputeCalibration();
 let discount = pricingDiscount(calibration);
