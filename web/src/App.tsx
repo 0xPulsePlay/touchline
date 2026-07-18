@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Calibration, type Fixture, type Market, type PathResponse, type Quote, type Side } from "./api.js";
 import { flag } from "./flags.js";
 import { PathChart } from "./PathChart.js";
+import { buildScale } from "./timeline.js";
 
 const fmtDay = (ts: number) =>
   new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
@@ -79,6 +80,13 @@ export function App() {
     [sel],
   );
 
+  const clockLabel = useMemo(() => {
+    if (!pathRes) return null;
+    const lastTs = pathRes.path[pathRes.path.length - 1]?.ts ?? 0;
+    const scale = buildScale(pathRes.timeline, 0, 1, lastTs);
+    return scale ? scale.labelOf : null;
+  }, [pathRes]);
+
   const openMarket = async () => {
     if (!sel) return;
     setBusy("create"); setErr(null);
@@ -152,6 +160,7 @@ export function App() {
                   <PathChart
                     path={pathRes.path}
                     startTime={sel.startTime}
+                    timeline={pathRes.timeline}
                     names={names}
                     side={side}
                     barrier={barrier}
@@ -169,9 +178,13 @@ export function App() {
                       onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }}
                       aria-label="scrub replay" />
                     <span className="clock mono">
-                      {pathRes.path[Math.max(0, visibleCursor - 1)]
-                        ? `+${Math.max(0, Math.round(((pathRes.path[Math.max(0, visibleCursor - 1)]!.ts) - sel.startTime) / 60000))}m wall`
-                        : ""} · {pathRes.tickCount.toLocaleString()} ticks
+                      {(() => {
+                        const p = pathRes.path[Math.max(0, visibleCursor - 1)];
+                        if (!p) return "";
+                        return clockLabel
+                          ? clockLabel(p.ts)
+                          : `+${Math.max(0, Math.round((p.ts - sel.startTime) / 60000))}m wall`;
+                      })()} · {pathRes.tickCount.toLocaleString()} ticks
                     </span>
                   </div>
                 </div>

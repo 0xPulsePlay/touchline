@@ -18,10 +18,29 @@ export interface PathPoint {
   part2: number;
 }
 
+export type PhaseName =
+  | "PRE" | "H1" | "HT" | "H2"
+  | "ET_WAIT" | "ET1" | "ET_HT" | "ET2"
+  | "PENS_WAIT" | "PENS" | "POST";
+
+export interface PhaseWindow {
+  phase: PhaseName;
+  startTs: number;
+  endTs: number;
+  clockStartS: number | null;
+  clockEndS: number | null;
+}
+
+export interface PhaseTimeline {
+  phases: PhaseWindow[];
+  clock: { ts: number; s: number }[];
+}
+
 export interface PathResponse {
   fixture: Fixture;
   opening: PathPoint | null;
   tickCount: number;
+  timeline: PhaseTimeline;
   path: PathPoint[];
 }
 

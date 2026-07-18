@@ -7,6 +7,7 @@ import { firstTouch, maxPct } from "./touch.js";
 import { createMarket, getMarket, listMarkets, poolImpliedYes, poolTotals, resolveMarket, stake } from "./markets.js";
 import { receiptForTick } from "./proofs.js";
 import { loadOrComputeCalibration, pricingDiscount } from "./calibration.js";
+import { phaseTimeline } from "./phases.js";
 
 const app = Fastify({ logger: { level: "info" } });
 await app.register(cors, { origin: true, methods: ["GET", "POST"] });
@@ -32,10 +33,13 @@ app.get<{ Params: { id: string }; Querystring: { every?: string } }>(
     const every = Math.max(1, Number(req.query.every ?? 5));
     const thin = path.filter((_, i) => i % every === 0 || i === path.length - 1);
     const open = openingProbe(path, f.startTime);
+    const lastTs = path.length ? path[path.length - 1]!.ts : f.startTime;
+    const timeline = phaseTimeline(f.fixtureId, lastTs);
     return {
       fixture: f,
       opening: open,
       tickCount: path.length,
+      timeline,
       path: thin.map((t) => ({ ts: t.ts, part1: t.part1, draw: t.draw, part2: t.part2 })),
     };
   },
