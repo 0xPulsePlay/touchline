@@ -75,7 +75,8 @@ export async function startBots(deps: BotDeps): Promise<void> {
         if (!q.valid) continue;
         const cutoffTs = Math.floor(Date.now() / 1000) + 86400;
         await placeBet(b.id, b.label, fixtureId, side, barrierBps,
-          Math.round(b.stakeUsdc * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs, { bot: true }, conn)
+          Math.round(b.stakeUsdc * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs,
+          { bot: true, venueP: Math.max(0.01, Math.min(0.99, pBps / 10000)) }, conn)
           .then((r) => console.log(`[bots] ${b.label} bet $${b.stakeUsdc} on ${side} touches ${barrierBps / 100}% @ ${(q.priceBps / 100).toFixed(1)}% (${r.sig.slice(0, 8)})`))
           .catch((e) => console.log(`[bots] ${b.label} skip: ${String(e).slice(0, 80)}`));
       }

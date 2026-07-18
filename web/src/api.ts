@@ -156,11 +156,21 @@ export const api = {
   claim: (sig: string) => fetch("/api/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sig }) }).then((r) => j<{ sig: string }>(r)),
   activity: () => fetch("/api/activity").then((r) => j<ActivityBet[]>(r)),
   onchainMarkets: (fixtureId: number) => fetch(`/api/onchain/markets?fixtureId=${fixtureId}`).then((r) => j<OnchainMarket[]>(r)),
+  treasury: (marketKey: string) => fetch(`/api/treasury/${marketKey}`).then((r) => j<Treasury>(r)),
 };
+
+export interface Treasury {
+  marketKey: string; barrierBps: number; bets: number; shares: number;
+  premiumsUsdc: number; hedgeCostUsdc: number; liabilityUsdc: number; venueP: number; venue: string;
+  hedgeValueIfTouched: number;
+  unhedgedNetIfYes: number; hedgedNetIfYes: number; hedgedNetIfNo: number;
+  realized: HedgeRealized | null;
+}
 
 export interface ChainState { programId: string; cluster: string; rpc: string; usdcMint: string | null; betCapUsdc: number; ready: boolean }
 export interface DealerQuote { side: Side; pBps: number; barrierBps: number; boundBps: number; discount: number; priceBps: number; payoutMult: number; minBarrierBps: number; valid: boolean; reason?: string }
 export interface BetResult { sig: string; marketKey: string; priceBps: number; payoutMult: number; amountUsdc: number; payoutUsdc: number }
 export interface ActivityBet { sig: string; marketKey: string; fixtureId: number; side: Side; barrierBps: number; label: string; bot: boolean; ts: number; claimed: boolean; amountUsdc: number; priceBps: number; payoutUsdc: number; bettor: string }
-export interface OnchainMarket { key: string; fixtureId: number; side: Side; barrierBps: number; status: "open" | "yes" | "no"; bets: ActivityBet[] }
-export interface ResolveResult { outcome: "yes" | "no"; sig: string; verified?: boolean; receipt?: Receipt }
+export interface OnchainMarket { key: string; fixtureId: number; side: Side; barrierBps: number; status: "open" | "yes" | "no"; bets: ActivityBet[]; treasury?: Treasury }
+export interface HedgeRealized { outcome: "yes" | "no"; touchProb: number; premiums: number; hedgeCost: number; hedgeValue: number; paid: number; net: number; unhedgedNet: number; ts: number }
+export interface ResolveResult { outcome: "yes" | "no"; sig: string; verified?: boolean; receipt?: Receipt; hedge?: HedgeRealized }

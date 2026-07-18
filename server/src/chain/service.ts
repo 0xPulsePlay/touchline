@@ -7,6 +7,7 @@ import { connection, houseKeypair, DATA_DIR } from "./config.js";
 import { ensureChainSetup, ensureAta, faucetMint, tokenBalance, readChainState, BET_CAP, USDC_DECIMALS } from "./tokens.js";
 import { loadProgram, configPda, marketPda, vaultPda, betPda, messageIdBytes, TOKEN_PROGRAM_ID, BN } from "./program.js";
 import { ensureWallet, fundSol, getWallet, type SessionWallet } from "./wallets.js";
+import { recordHedge } from "./hedge.js";
 import type { Side } from "../model.js";
 
 const LEDGER = resolve(DATA_DIR, "onchain-ledger.json");
@@ -100,7 +101,7 @@ export async function ensureMarket(fixtureId: number, side: Side, barrierBps: nu
 /** Place a co-signed fixed-odds bet (house + session both sign). Returns the tx signature. */
 export async function placeBet(
   sessionId: string, label: string, fixtureId: number, side: Side, barrierBps: number,
-  amountUnits: number, priceBps: number, cutoffTs: number, opts: { bot?: boolean } = {}, conn?: Connection,
+  amountUnits: number, priceBps: number, cutoffTs: number, opts: { bot?: boolean; venueP?: number } = {}, conn?: Connection,
 ): Promise<LedgerBet> {
   const c = conn ?? connection();
   const { usdcMint } = await ensureReady(c);
@@ -132,6 +133,13 @@ export async function placeBet(
   };
   ledger.bets.push(rec);
   saveLedger(ledger);
+
+  // hedge the ticket: take the offsetting win-share position (net-zero replication).
+  // venueP = the side's current win probability p. When a caller omits it, reconstruct p from the
+  // quoted price: price ≈ (p/B)·discount·spread ⟹ p ≈ price·B/discount (spread absorbed in the clamp).
+  const venueP = opts.venueP
+    ?? Math.max(0.01, Math.min(0.99, (priceBps / 10000) * (barrierBps / 10000) / 0.87));
+  recordHedge({ marketKey, betSig: sig, side, barrierBps, stakeUsdc: amountUnits / 1e6, payoutUsdc: payout / 1e6, venueP });
   return rec;
 }
 

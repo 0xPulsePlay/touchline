@@ -7,6 +7,7 @@ import {
 } from "./service.js";
 import { receiptForTick } from "../proofs.js";
 import { dealerQuote } from "../dealer.js";
+import { treasury, realizeHedge, bookSummary } from "./hedge.js";
 import type { Side } from "../model.js";
 
 const SIDES: Side[] = ["part1", "draw", "part2"];
@@ -88,9 +89,10 @@ export function registerChainRoutes(
       const capUsdc = (readChainState()?.betCap ?? 0) / 10 ** USDC_DECIMALS;
       const amount = Math.min(usdc ?? 5, capUsdc);
       const cutoffTs = Math.floor(Date.now() / 1000) + 86400; // demo/replay markets stay open 24h
+      const venueP = Math.max(0.01, Math.min(0.99, pBps / 10000)); // hedge struck at the side's current win price
       try {
         const rec = await placeBet(sessionId, label ?? "you", f.fixtureId, side, barrierBps,
-          Math.round(amount * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs, { bot: !!bot }, conn);
+          Math.round(amount * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs, { bot: !!bot, venueP }, conn);
         return {
           sig: rec.sig, marketKey: rec.marketKey, priceBps: q.priceBps, payoutMult: q.payoutMult,
           amountUsdc: amount, payoutUsdc: rec.payout / 10 ** USDC_DECIMALS,
@@ -119,14 +121,18 @@ export function registerChainRoutes(
           rootHash: rootHash.length === 32 ? rootHash : [...Buffer.alloc(32)],
           pda: v?.pda ?? "11111111111111111111111111111111",
         }, conn);
-        return { outcome: "yes", sig, verified: receipt.verified, receipt };
+        // realize the hedge: win-shares liquidate at the touching probability (≥ B, captures overshoot).
+        // path values are percentages (0..100); realizeHedge wants a fraction.
+        const hedge = realizeHedge(lm.key, lm.barrierBps, "yes", hit[lm.side] / 100);
+        return { outcome: "yes", sig, verified: receipt.verified, receipt, hedge };
       }
       if (!f.isFinal) return reply.code(409).send({ error: "no touch yet and fixture not final" });
       const sig = await resolveMarketOnChain(lm.key, false, {
         messageId: `final:${lm.fixtureId}`, ts: Date.now(), probBps: 0, rootHash: [...Buffer.alloc(32)],
         pda: "11111111111111111111111111111111",
       }, conn);
-      return { outcome: "no", sig };
+      const hedge = realizeHedge(lm.key, lm.barrierBps, "no", 0);
+      return { outcome: "no", sig, hedge };
     } catch (e) { return reply.code(502).send({ error: String(e) }); }
   });
 
@@ -141,8 +147,18 @@ export function registerChainRoutes(
   app.get<{ Querystring: { fixtureId?: string } }>("/api/onchain/markets", async (req) => {
     const fid = req.query.fixtureId ? Number(req.query.fixtureId) : undefined;
     const markets = listLedgerMarkets().filter((m) => fid === undefined || m.fixtureId === fid);
-    return markets.map((m) => ({ ...m, bets: marketBets(m.key).map(fmtBet) }));
+    return markets.map((m) => ({ ...m, bets: marketBets(m.key).map(fmtBet), treasury: treasury(m.key, m.barrierBps) }));
   });
+
+  /** The hedge book for one market — the offsetting win-share position + net-zero accounting. */
+  app.get<{ Params: { key: string } }>("/api/treasury/:key", async (req, reply) => {
+    const lm = listLedgerMarkets().find((m) => m.key === req.params.key);
+    if (!lm) return reply.code(404).send({ error: "unknown market" });
+    return treasury(lm.key, lm.barrierBps);
+  });
+
+  /** Platform-wide hedge book roll-up. */
+  app.get("/api/treasury", async () => bookSummary());
 }
 
 function fmtBet(b: import("./service.js").LedgerBet) {

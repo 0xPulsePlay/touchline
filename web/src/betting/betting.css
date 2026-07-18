@@ -33,6 +33,8 @@
 .q-sub { font-size: 0.68rem; color: var(--ink-3); margin-top: 3px; }
 .q-arrow { color: var(--ink-3); font-size: 1.2rem; }
 .q-decomp { font-size: 0.72rem; color: var(--ink-3); margin-left: auto; }
+.q-paper { color: var(--accent); text-decoration: none; }
+.q-paper:hover { text-decoration: underline; }
 
 .bet-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .stakebtn { flex: 1; min-width: 80px; padding: 11px 14px; border: none; border-radius: 10px;
@@ -46,6 +48,28 @@
 .bet-msg.ok { background: var(--good-bg); color: var(--good); }
 .bet-msg.err { background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit);
   word-break: break-word; }
+
+.hedgebook { margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+  background: color-mix(in srgb, var(--pitch) 4%, var(--ground)); }
+.hb-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hb-note { font-size: 0.82rem; color: var(--ink-2); line-height: 1.5; margin: 10px 0 14px; }
+.hb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 520px) { .hb-grid { grid-template-columns: 1fr; } }
+.hb-cell { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--line-soft);
+  border-radius: 10px; background: var(--ground); }
+.hb-k { font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.hb-v { font-size: 1.15rem; font-weight: 700; }
+.hb-sub { font-size: 0.66rem; color: var(--ink-3); }
+.hb-scenarios { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.hb-row { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; flex-wrap: wrap; }
+.hb-tag { font-size: 0.64rem; font-family: ui-monospace, Menlo, monospace; border-radius: 100px; padding: 2px 9px;
+  white-space: nowrap; }
+.hb-tag.yes { color: var(--pitch); border: 1px solid var(--pitch); }
+.hb-tag.no { color: var(--ink-3); border: 1px solid var(--line); }
+.hb-tag.risk { color: var(--crit); border: 1px solid color-mix(in srgb, var(--crit) 50%, transparent); }
+.hb-settled { margin-top: 14px; font-size: 0.84rem; padding: 11px 13px; border-radius: 8px; line-height: 1.5;
+  background: var(--surface-2); }
+.hb-settled.flat { background: var(--good-bg); color: var(--good); }
 
 .activity { margin-top: 18px; }
 .act-head { font-family: Futura, "Century Gothic", sans-serif; font-size: 0.66rem; letter-spacing: 0.14em;

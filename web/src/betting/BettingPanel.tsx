@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ActivityBet, type ChainState, type DealerQuote, type Fixture, type Side } from "../api.js";
+import { api, type ActivityBet, type ChainState, type DealerQuote, type Fixture, type Side, type Treasury } from "../api.js";
 import { flag } from "../flags.js";
 import "./betting.css";
+
+const usd = (n: number) => (n < 0 ? `−$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`);
 
 /** A stable per-browser session id (the custodial demo wallet key on the server). */
 function sessionId(): string {
@@ -24,11 +26,24 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
   const [activity, setActivity] = useState<ActivityBet[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [treasury, setTreasury] = useState<Treasury | null>(null);
   const lastBet = useRef<{ sig: string; marketKey: string } | null>(null);
 
   useEffect(() => { api.chainState().then(setChain).catch(() => {}); }, []);
   const refreshBal = useCallback(() => api.balance(sid).then((b) => setBal(b.balanceUsdc)).catch(() => {}), [sid]);
   useEffect(() => { refreshBal(); }, [refreshBal]);
+
+  const refreshTreasury = useCallback(() => {
+    const key = lastBet.current?.marketKey;
+    if (!key) return;
+    api.treasury(key).then(setTreasury).catch(() => {});
+  }, []);
+  // keep the hedge book live while a market is in play (bots trade into the same book)
+  useEffect(() => {
+    if (!lastBet.current) return;
+    const id = setInterval(refreshTreasury, 4000);
+    return () => clearInterval(id);
+  }, [refreshTreasury, treasury?.marketKey]);
 
   // quote follows the barrier/side (gated on the server)
   useEffect(() => {
@@ -58,7 +73,7 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
       const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, usdc });
       lastBet.current = { sig: r.sig, marketKey: r.marketKey };
       setMsg({ kind: "ok", text: `Bet placed on-chain — $${r.amountUsdc} → $${r.payoutUsdc.toFixed(2)} if it touches. tx ${r.sig.slice(0, 8)}…` });
-      refreshBal(); api.activity().then(setActivity).catch(() => {});
+      refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
     } catch (e) { setMsg({ kind: "err", text: String(e) }); } finally { setBusy(null); }
   };
 
@@ -74,7 +89,7 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
       } else {
         setMsg({ kind: "ok", text: "Resolved NO — barrier never touched; house keeps the stake." });
       }
-      refreshBal(); api.activity().then(setActivity).catch(() => {});
+      refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
     } catch (e) { setMsg({ kind: "err", text: String(e) }); } finally { setBusy(null); }
   };
 
@@ -123,7 +138,10 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
             <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
             <div className="q-arrow">→</div>
             <div className="q-payout"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it touches</span></div>
-            <div className="q-decomp mono">p/B {pctBps(quote.pBps)}/{barrier} = {pctBps(quote.boundBps)} × {quote.discount.toFixed(2)}</div>
+            <div className="q-decomp mono">
+              p/B {pctBps(quote.pBps)}/{barrier} = {pctBps(quote.boundBps)} × {quote.discount.toFixed(2)}
+              <a className="q-paper" href="#/paper"> · how?</a>
+            </div>
           </div>
         )}
         <div className="bet-actions">
@@ -136,6 +154,54 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
         </div>
         {msg && <div className={`bet-msg ${msg.kind}`}>{msg.text}</div>}
       </div>
+
+      {treasury && treasury.bets > 0 && (
+        <div className="hedgebook">
+          <div className="hb-head">
+            <span className="act-head" style={{ margin: 0 }}>House hedge book</span>
+            <span className="devnet">net-zero replication</span>
+          </div>
+          <p className="hb-note">
+            Every ticket the house writes is offset live: it buys <b>{treasury.shares.toFixed(1)} win-shares</b> at{" "}
+            {(treasury.venueP * 100).toFixed(0)}¢ on {treasury.venue.replace("txline-winprob", "the TxLINE win price")}{" "}
+            (cost {usd(treasury.hedgeCostUsdc)}), collapsing the payout risk into a small residual either way.
+          </p>
+          <div className="hb-grid">
+            <div className="hb-cell">
+              <span className="hb-k">Premiums in</span>
+              <span className="hb-v mono">{usd(treasury.premiumsUsdc)}</span>
+              <span className="hb-sub">{treasury.bets} ticket{treasury.bets === 1 ? "" : "s"}</span>
+            </div>
+            <div className="hb-cell">
+              <span className="hb-k">Payout if it touches</span>
+              <span className="hb-v mono">{usd(treasury.liabilityUsdc)}</span>
+              <span className="hb-sub">hedge returns ≈ {usd(treasury.hedgeValueIfTouched)}</span>
+            </div>
+            <div className="hb-cell">
+              <span className="hb-k">Hedge cost</span>
+              <span className="hb-v mono">{usd(treasury.hedgeCostUsdc)}</span>
+              <span className="hb-sub">{treasury.shares.toFixed(1)} shares @ {(treasury.venueP * 100).toFixed(0)}¢</span>
+            </div>
+          </div>
+          {!treasury.realized ? (
+            <div className="hb-scenarios">
+              <div className="hb-row"><span className="hb-tag risk">unhedged, a touch</span>
+                <span className="mono">would cost the house <b>{usd(treasury.unhedgedNetIfYes)}</b></span></div>
+              <div className="hb-row"><span className="hb-tag yes">touches {pctBps(treasury.barrierBps)}</span>
+                <span className="mono">hedged net <b>{treasury.hedgedNetIfYes >= 0 ? "+" : ""}{usd(treasury.hedgedNetIfYes)}</b> <span className="hb-sub">+ any jump overshoot</span></span></div>
+              <div className="hb-row"><span className="hb-tag no">never touches</span>
+                <span className="mono">hedged net <b>{treasury.hedgedNetIfNo >= 0 ? "+" : ""}{usd(treasury.hedgedNetIfNo)}</b></span></div>
+            </div>
+          ) : (
+            <div className={`hb-settled ${treasury.realized.net >= -0.01 ? "flat" : ""}`}>
+              Settled {treasury.realized.outcome.toUpperCase()} — unhedged this would have been{" "}
+              <b>{usd(treasury.realized.unhedgedNet)}</b>; hedged, the book landed at{" "}
+              <b>{treasury.realized.net >= 0 ? "+" : ""}{usd(treasury.realized.net)}</b>{" "}
+              <span className="hb-sub">(premiums {usd(treasury.realized.premiums)} − hedge {usd(treasury.realized.hedgeCost)} + liquidation {usd(treasury.realized.hedgeValue)} − payout {usd(treasury.realized.paid)})</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="activity">
         <div className="act-head">Live market activity</div>
