@@ -12,8 +12,10 @@ function sessionId(): string {
 
 const pctBps = (b: number) => `${(b / 100).toFixed(1)}%`;
 
-export function BettingPanel({ fixture, side, barrier, names }: {
-  fixture: Fixture; side: Side; barrier: number; names: { part1: string; draw: string; part2: string };
+export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, names }: {
+  fixture: Fixture; side: Side; setSide: (s: Side) => void;
+  barrier: number; setBarrier: (b: number) => void;
+  names: { part1: string; draw: string; part2: string };
 }) {
   const sid = sessionId();
   const [chain, setChain] = useState<ChainState | null>(null);
@@ -77,22 +79,44 @@ export function BettingPanel({ fixture, side, barrier, names }: {
   };
 
   const sideName = side === "draw" ? "Draw" : names[side];
-  const minBar = quote ? quote.minBarrierBps / 100 : 0;
+  const minBar = quote ? Math.ceil(quote.minBarrierBps / 100) : 5;
+  // keep the slider from ever sitting below the gated minimum once we know the current probability
+  useEffect(() => {
+    if (quote && barrier < minBar) setBarrier(minBar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minBar]);
 
   return (
     <section className="panel bet">
       <div className="bet-head">
-        <h2>Place a real bet <span className="devnet">devnet · mock USDC</span></h2>
+        <h2>Predict a touch <span className="devnet">devnet · mock USDC</span></h2>
         <div className="wallet-line">
           {bal === null ? <span className="mono dim">—</span> : <span className="mono bal">{bal.toFixed(2)} <span className="tick">tUSDC</span></span>}
           <button className="btn2" onClick={faucet} disabled={busy === "faucet"}>{busy === "faucet" ? "…" : "＋ Faucet 100"}</button>
         </div>
       </div>
 
+      {/* one surface: pick a side, drag the barrier, place the prediction — no market to open */}
+      <div className="picker">
+        <div className="seg" role="group" aria-label="team">
+          {(["part1", "draw", "part2"] as Side[]).map((k) => (
+            <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
+              {k === "draw" ? "🤝 Draw" : `${flag(names[k])} ${names[k]}`}
+            </button>
+          ))}
+        </div>
+        <div className="barrierbox">
+          <span className="mono blabel">touches</span>
+          <input type="range" min={minBar} max={95} step={1} value={Math.max(barrier, minBar)}
+            onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
+          <span className="bval mono">{barrier}%</span>
+        </div>
+      </div>
+
       <div className="quote-card">
         <div className="q-line">
           <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{sideName}</b> touches <b>{barrier}%</b>?</span>
-          {quote && !quote.valid && <span className="gate">needs ≥ {minBar.toFixed(1)}%</span>}
+          {quote && !quote.valid && <span className="gate">pick ≥ {minBar}% (now {(quote.pBps / 100).toFixed(0)}%)</span>}
         </div>
         {quote?.valid && (
           <div className="q-body">

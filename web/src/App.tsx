@@ -332,115 +332,14 @@ export function App({ fixtureId }: { fixtureId: number }) {
               )}
             </section>
 
-            <section className="panel">
-              <h2>One-touch market</h2>
-              <div className="builder">
-                <div className="seg" role="group" aria-label="side">
-                  {(["part1", "draw", "part2"] as Side[]).map((k) => (
-                    <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
-                      {k === "draw" ? "🤝 Draw" : `${flag(names[k])} ${names[k]}`}
-                    </button>
-                  ))}
-                </div>
-                <div className="barrierbox">
-                  <span className="mono" style={{ fontSize: ".72rem", color: "var(--ink-3)" }}>touches</span>
-                  <input type="range" min={5} max={95} step={1} value={barrier}
-                    onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
-                  <span className="bval mono">{barrier}%</span>
-                </div>
-                {quote && (
-                  <div className="quoteline">
-                    <span className="fair">{pct(quote.fair)}</span>
-                    <span className="decomp mono">
-                      p/B = {quote.p0.toFixed(1)}/{quote.barrier} = {pct(quote.bound)} × {quote.discount.toFixed(2)}
-                    </span>
-                    <button className="cta" onClick={openMarket} disabled={busy === "create"}>
-                      {busy === "create" ? "Opening…" : "Open market"}
-                    </button>
-                  </div>
-                )}
-                <details className="why">
-                  <summary>Why p/B?</summary>
-                  <div className="whybody">
-                    A de-margined probability is a martingale ending in {"{0,1}"}. Stopping at the first
-                    touch of <i>B</i>: <i>p = B·P(touch)</i>, and a path that never touches <i>B</i> can't
-                    reach 1 — so <i>P(touch) = p/B</i>. Goals jump, so p/B is an upper bound; the
-                    ×{(quote?.discount ?? 0.87).toFixed(2)} is measured across {cal?.fixtures ?? "—"} real matches.
-                  </div>
-                </details>
-              </div>
-            </section>
-
-            <BettingPanel fixture={sel} side={side} barrier={barrier} names={names} />
-
-            <section className="panel">
-              <h2>Markets</h2>
-              {markets.length === 0 && <div className="empty">None yet — open one above.</div>}
-              {markets.map((m) => {
-                const total = m.pools.yes + m.pools.no;
-                const rec = m.resolution?.receipt;
-                const v = rec?.verification ?? null;
-                return (
-                  <div className="mkt" key={m.id}>
-                    <div className="row1">
-                      <span className="q">
-                        {m.side === "draw" ? "Draw" : names[m.side]} touches {m.barrierPct}%?
-                      </span>
-                      <span className={`chip ${m.status === "open" ? "open" : m.status === "resolved_yes" ? "yes" : "no"}`}>
-                        {m.status === "open" ? "Open" : m.status === "resolved_yes" ? "YES · touched" : "NO"}
-                      </span>
-                    </div>
-                    <div className="poolbar" aria-hidden="true">
-                      <div className="y" style={{ width: `${(m.pools.yes / Math.max(1, total)) * 100}%` }} />
-                      <div className="n" />
-                    </div>
-                    <div className="nums mono">
-                      <span>YES {m.pools.yes}</span>
-                      <span>NO {m.pools.no}</span>
-                      <span>implied {pct(m.poolImpliedYes)}</span>
-                      <span>opened {pct(m.quoteAtCreate.fair)}</span>
-                      {m.resolution && <span>pays ×{m.resolution.payoutPerUnit.toFixed(2)}</span>}
-                    </div>
-                    {m.status === "open" && (
-                      <div className="actions">
-                        <button className="btn2" onClick={() => doStake(m, "yes")} disabled={busy === m.id}>+25 YES</button>
-                        <button className="btn2" onClick={() => doStake(m, "no")} disabled={busy === m.id}>+25 NO</button>
-                        <button className="btn2 primary" onClick={() => doResolve(m)} disabled={busy === m.id}>
-                          {busy === m.id ? "Verifying proof…" : "Resolve"}
-                        </button>
-                      </div>
-                    )}
-                    {rec && (
-                      <details className={`receipt${rec.verified ? "" : " bad"}`}>
-                        <summary>{rec.verified ? "✓ Proof verified against Solana" : "✗ Proof not verified"}</summary>
-                        <div className="rbody">
-                          {v ? (
-                            <>
-                              {m.resolution?.evidence && (
-                                <div className="rstep"><span className="ok">⚡</span>
-                                  <span>evidence tick: {m.resolution.evidence.pct.toFixed(2)}% · <code>{m.resolution.evidence.messageId}</code></span></div>
-                              )}
-                              <div className="rstep"><span className={v.subTreeVerified ? "ok" : "fail"}>{v.subTreeVerified ? "✓" : "✗"}</span><span>odds tick leaf → odds sub-tree root</span></div>
-                              <div className="rstep"><span className={v.mainTreeVerified ? "ok" : "fail"}>{v.mainTreeVerified ? "✓" : "✗"}</span>
-                                <span>summary leaf → slot root · <code>{v.computedRootHex.slice(0, 16)}…</code> = on-chain <code>{(v.onChainRootHex ?? "").slice(0, 16)}…</code></span></div>
-                              <div className="rstep"><span className={v.pdaEpochDayMatches ? "ok" : "fail"}>{v.pdaEpochDayMatches ? "✓" : "✗"}</span>
-                                <span>anchored in <code>daily_batch_roots</code> · epochDay {v.epochDay}, slot {v.fiveMinSlot}</span></div>
-                              <div className="rfoot">
-                                PDA <code>{v.pda.slice(0, 14)}…</code> ·{" "}
-                                <a href={`https://solscan.io/account/${v.pda}`} target="_blank" rel="noreferrer">view anchor account ↗</a>
-                              </div>
-                            </>
-                          ) : (
-                            <div>{rec.error ?? "no verification detail"}</div>
-                          )}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                );
-              })}
-              {err && <div className="err mono">{err}</div>}
-            </section>
+            <BettingPanel
+              fixture={sel}
+              side={side}
+              setSide={setSide}
+              barrier={barrier}
+              setBarrier={setBarrier}
+              names={names}
+            />
 
             <section className="panel">
               <h2>Calibration</h2>
