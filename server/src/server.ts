@@ -36,23 +36,29 @@ app.get("/api/fixtures", async () => listFixtures());
 app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string } }>(
   "/api/fixtures/:id/path",
   async (req, reply) => {
-    const f = await getFixture(Number(req.params.id));
-    if (!f) return reply.code(404).send({ error: "unknown fixture" });
-    const asOf = req.query.asOf ? Number(req.query.asOf) : undefined;
-    const path = await pathFor(f.fixtureId, asOf);
-    const every = Math.max(1, Number(req.query.every ?? 5));
-    const thin = path.filter((_, i) => i % every === 0 || i === path.length - 1);
-    const open = openingProbe(path, f.startTime);
-    const lastTs = path.length ? path[path.length - 1]!.ts : f.startTime;
-    const timeline = await timelineFor(f.fixtureId, lastTs, { asOf, startTimeHint: f.startTime });
-    return {
-      fixture: f,
-      opening: open,
-      tickCount: path.length,
-      asOf: asOf ?? null,
-      timeline,
-      path: thin.map((t) => ({ ts: t.ts, part1: t.part1, draw: t.draw, part2: t.part2 })),
-    };
+    try {
+      const f = await getFixture(Number(req.params.id));
+      if (!f) return reply.code(404).send({ error: "unknown fixture" });
+      const asOf = req.query.asOf ? Number(req.query.asOf) : undefined;
+      const path = await pathFor(f.fixtureId, asOf);
+      const every = Math.max(1, Number(req.query.every ?? 5));
+      const thin = path.filter((_, i) => i % every === 0 || i === path.length - 1);
+      const open = openingProbe(path, f.startTime);
+      const lastTs = path.length ? path[path.length - 1]!.ts : f.startTime;
+      const timeline = await timelineFor(f.fixtureId, lastTs, { asOf, startTimeHint: f.startTime });
+      return {
+        fixture: f,
+        opening: open,
+        tickCount: path.length,
+        asOf: asOf ?? null,
+        timeline,
+        path: thin.map((t) => ({ ts: t.ts, part1: t.part1, draw: t.draw, part2: t.part2 })),
+      };
+    } catch (e) {
+      // transient upstream (platform SDK) hiccup — return a clean handled error; the live/sim
+      // poller's own retry recovers on the next tick rather than surfacing an unhandled 500.
+      return reply.code(503).send({ error: "path temporarily unavailable", detail: String(e).slice(0, 120) });
+    }
   },
 );
 
