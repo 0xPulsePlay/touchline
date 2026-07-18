@@ -4,6 +4,12 @@ import { buildScale, NOMINAL_END } from "./timeline.js";
 
 const COLOR: Record<Side, string> = { part1: "var(--home)", draw: "var(--draw)", part2: "var(--away)" };
 
+/** short date/time label for the pre-match axis (no match clock to anchor to) */
+function fmtPreTick(ts: number): string {
+  const d = new Date(ts);
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${d.toLocaleTimeString(undefined, { hour: "numeric" })}`;
+}
+
 export interface PathChartProps {
   path: PathPoint[];
   startTime: number;
@@ -27,17 +33,31 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
     [timeline, lastTs, pw, live ? 1 : 0],
   );
 
-  // wall-clock fallback when a fixture has no scores coverage
-  const x0 = path.find((p) => p.ts >= startTime - 20 * 60000)?.ts ?? path[0]?.ts ?? 0;
-  const X = scale
-    ? scale.xOf
-    : (ts: number) => M.l + ((ts - x0) / Math.max(1, lastTs - x0)) * pw;
+  // "pre-match mode": the fixture has no REAL in-play data yet — either it's upcoming, or it started
+  // but the live feed never landed in the corpus (projected phases don't count as real play). Render
+  // the FULL pre-match odds series over a plain time axis instead of squashing 40+ hours of ticks
+  // into the compressed 20-minute PRE band (which left only a handful of points and looked empty).
+  const hasRealPlay = !!scale && scale.segments.some((s) => s.playing && !s.projected);
+  const preMatch = !hasRealPlay;
+
+  const firstTs = path[0]?.ts ?? startTime;
+  const X = preMatch
+    ? (ts: number) => M.l + ((ts - firstTs) / Math.max(1, lastTs - firstTs)) * pw
+    : scale!.xOf;
   const Y = (v: number) => M.t + (1 - v / 100) * ph;
 
-  const drawFrom = scale ? (scale.segments[0]?.startTs ?? x0) : x0;
+  const drawFrom = preMatch ? firstTs : (scale!.segments[0]?.startTs ?? firstTs);
   const visible = live
     ? path.filter((p) => p.ts >= drawFrom && p.ts <= live.revealTs)
     : path.filter((p) => p.ts >= drawFrom).slice(0, Math.max(2, cursor));
+
+  // sparse date/time gridlines when there's no match clock to anchor the axis
+  const preTicks = preMatch
+    ? Array.from({ length: 5 }, (_, i) => {
+        const ts = firstTs + (i / 4) * Math.max(1, lastTs - firstTs);
+        return { x: M.l + (i / 4) * pw, label: fmtPreTick(ts) };
+      })
+    : [];
   const line = (key: Side) =>
     visible.map((p, i) => `${i ? "L" : "M"}${X(p.ts).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join(" ");
 
@@ -48,7 +68,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="probability path replay">
       {/* projected (not-yet-reached) territory: faint tint so the axis shape reads from kickoff */}
-      {scale?.segments
+      {!preMatch && scale?.segments
         .filter((s) => s.projected)
         .map((s) => (
           <rect key={`proj-${s.phase}-${s.startTs}`} x={s.x0} y={M.t} width={s.x1 - s.x0} height={ph}
@@ -61,7 +81,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
       )}
 
       {/* compressed break bands, drawn first */}
-      {scale?.segments
+      {!preMatch && scale?.segments
         .filter((s) => !s.playing)
         .map((s) => (
           <g key={`${s.phase}-${s.startTs}`}>
@@ -88,8 +108,8 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
       ))}
 
       {/* stoppage-time tint: from the nominal 45′/90′/105′/120′ mark to the phase's real end */}
-      {scale?.segments
-        .filter((s) => s.playing && s.clockStartS != null && s.clockEndS != null)
+      {!preMatch && scale?.segments
+        .filter((s) => s.playing && !s.projected && s.clockStartS != null && s.clockEndS != null)
         .map((s) => {
           const nominal = NOMINAL_END[s.phase];
           if (nominal === undefined || (s.clockEndS as number) <= nominal) return null;
@@ -107,20 +127,30 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
           );
         })}
 
-      {/* match-clock minute ticks (15′ marks inside playing phases) */}
-      {scale ? (
-        scale.minuteTicks.map((t) => (
+      {/* axis labels: match-clock minute ticks in-play, else pre-match date/time gridlines */}
+      {preMatch ? (
+        <>
+          {preTicks.map((t, i) => (
+            <g key={t.x}>
+              <line x1={t.x} x2={t.x} y1={M.t} y2={M.t + ph} stroke="var(--line-soft)" opacity={i === 0 ? 0 : 0.6} />
+              <text x={t.x} y={H - 12} textAnchor={i === 0 ? "start" : i === preTicks.length - 1 ? "end" : "middle"}>{t.label}</text>
+            </g>
+          ))}
+          <text x={M.l} y={M.t - 4} fill="var(--ink-3)" style={{ fontSize: 9, letterSpacing: "0.08em" }}>
+            PRE-MATCH ODDS · awaiting kickoff feed
+          </text>
+        </>
+      ) : (
+        scale!.minuteTicks.map((t) => (
           <g key={t.x}>
             <line x1={t.x} x2={t.x} y1={M.t + ph - 4} y2={M.t + ph} stroke="var(--ink-3)" />
             <text x={t.x} y={H - 12} textAnchor="middle">{t.label}</text>
           </g>
         ))
-      ) : (
-        <text x={M.l} y={H - 12}>wall clock (no scores coverage for this fixture)</text>
       )}
 
       {/* kickoff */}
-      {scale && scale.segments[1] && (
+      {!preMatch && scale && scale.segments[1] && (
         <g>
           <line x1={scale.segments[1].x0} x2={scale.segments[1].x0} y1={M.t} y2={M.t + ph} stroke="var(--line)" strokeDasharray="3 4" />
           <text x={scale.segments[1].x0 + 3} y={H - 12}>KO</text>

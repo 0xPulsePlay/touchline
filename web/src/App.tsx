@@ -181,13 +181,18 @@ export function App({ fixtureId }: { fixtureId: number }) {
     return cur;
   };
 
+  // wall-clock says "live", but no in-play tick has landed for this fixture (static corpus, or the
+  // kickoff feed simply hasn't delivered): present it honestly as pre-match awaiting the feed rather
+  // than a stuck "KO −262′" countdown next to a LIVE badge.
+  const awaitingFeed = isLive && !!sel && !!pathRes && !pathRes.path.some((p) => p.ts >= sel.startTime);
+
   const liveEdgeLabel = (() => {
     if (!sel) return "";
     const edge = revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts;
     if (edge === undefined || !clockLabel) return "";
     const l = clockLabel(edge);
     if (l === "pre-match" && edge < sel.startTime) {
-      return `KO −${Math.max(0, Math.ceil((sel.startTime - edge) / 60000))}′`;
+      return awaitingFeed ? "awaiting kickoff feed" : `KO −${Math.max(0, Math.ceil((sel.startTime - edge) / 60000))}′`;
     }
     return l;
   })();
@@ -223,8 +228,8 @@ export function App({ fixtureId }: { fixtureId: number }) {
               <span className="vs display">
                 {flag(sel.participant1)} {sel.participant1} {headScore} {sel.participant2} {flag(sel.participant2)}
               </span>
-              <span className={`badge${sel.isFinal ? " ft" : selGroup === "live" ? " live" : ""}`}>
-                {sel.isFinal ? "Full time" : selGroup === "live" ? "Live" : "Scheduled"}
+              <span className={`badge${sel.isFinal ? " ft" : selGroup === "live" && !awaitingFeed ? " live" : ""}`}>
+                {sel.isFinal ? "Full time" : awaitingFeed ? "Pre-match" : selGroup === "live" ? "Live" : "Scheduled"}
               </span>
               <span className="when">{fmtDay(sel.startTime)} · {sel.competition}</span>
             </div>
@@ -252,8 +257,8 @@ export function App({ fixtureId }: { fixtureId: number }) {
                   />
                   {simUi || isLive ? (
                     <div className="livebar">
-                      <span className="livedot" aria-hidden="true" />
-                      <span className="mono livelabel">{simUi ? "SIM · " : "LIVE · "}{liveEdgeLabel}{headScore !== "vs" ? ` · ${headScore}` : ""}</span>
+                      <span className={`livedot${awaitingFeed && !simUi ? " waiting" : ""}`} aria-hidden="true" />
+                      <span className="mono livelabel">{simUi ? "SIM · " : awaitingFeed ? "" : "LIVE · "}{liveEdgeLabel}{headScore !== "vs" ? ` · ${headScore}` : ""}</span>
                       {simUi && (
                         <>
                           <span className="speeds">

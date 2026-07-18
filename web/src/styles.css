@@ -273,7 +273,10 @@ details.receipt[open] summary::after { content: " · hide"; }
 .livebar { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 .livebar .livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--live);
   animation: pulse 1.6s infinite; flex-shrink: 0; }
+/* wall-clock past kickoff but no in-play feed yet — muted, not a pulsing "live" */
+.livebar .livedot.waiting { background: var(--ink-3); animation: none; }
 .livebar .livelabel { font-size: 0.8rem; font-weight: 700; color: var(--live); flex: 1; }
+.livebar .livedot.waiting ~ .livelabel { color: var(--ink-3); }
 .livebar .speeds { display: flex; gap: 6px; }
 .livebar .btn2.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
