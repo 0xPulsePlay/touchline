@@ -2,8 +2,24 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import {
-  createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, TOKEN_PROGRAM_ID,
+  createMint, mintTo, getAccount, TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotent,
 } from "@solana/spl-token";
+import { houseKeypair as _hk } from "./config.js";
+
+/**
+ * Race-free ATA ensure for the local validator: derive the deterministic address, create it
+ * idempotently only if missing (paid by the house), and return the address WITHOUT a racy
+ * post-create re-fetch (which is what `getOrCreateAssociatedTokenAccount` does and why it flaked).
+ */
+export async function ensureAta(conn: Connection, mint: PublicKey, owner: PublicKey): Promise<PublicKey> {
+  const addr = getAssociatedTokenAddressSync(mint, owner);
+  const info = await conn.getAccountInfo(addr);
+  if (!info) {
+    await createAssociatedTokenAccountIdempotent(conn, _hk(), mint, owner, { commitment: "confirmed" });
+  }
+  return addr;
+}
 import { CHAIN_STATE, type ChainState, houseKeypair, connection, PROGRAM_ID } from "./config.js";
 import { configPda } from "./program.js";
 
@@ -49,8 +65,8 @@ export async function ensureChainSetup(conn?: Connection): Promise<ChainState> {
 export async function faucetMint(mint: PublicKey, owner: PublicKey, amount: number, conn?: Connection): Promise<string> {
   const c = conn ?? connection();
   const house = houseKeypair();
-  const ata = await getOrCreateAssociatedTokenAccount(c, house, mint, owner);
-  const sig = await mintTo(c, house, mint, ata.address, house, amount);
+  const ata = await ensureAta(c, mint, owner);
+  const sig = await mintTo(c, house, mint, ata, house, amount);
   return sig;
 }
 
@@ -58,8 +74,8 @@ export async function tokenBalance(mint: PublicKey, owner: PublicKey, conn?: Con
   const c = conn ?? connection();
   const house = houseKeypair();
   try {
-    const ata = await getOrCreateAssociatedTokenAccount(c, house, mint, owner);
-    const acct = await getAccount(c, ata.address);
+    const ata = await ensureAta(c, mint, owner);
+    const acct = await getAccount(c, ata);
     return Number(acct.amount);
   } catch { return 0; }
 }

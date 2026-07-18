@@ -22,7 +22,9 @@ export function connection(): Connection {
 }
 
 /** Where mint/config addresses are persisted after one-time setup. */
-export const CHAIN_STATE = resolve(here, "../../.data/chain.json");
+/** Shared writable data dir (verified working) — all chain persistence uses this to avoid path drift. */
+export const DATA_DIR = resolve(here, "../../.data");
+export const CHAIN_STATE = resolve(DATA_DIR, "chain.json");
 /** IDL path (anchor 1.1.2 format, discriminators embedded). */
 export const IDL_PATH = resolve(here, "../../../onchain/touchline_market.json");
 

@@ -8,6 +8,8 @@ import { firstTouch, maxPct } from "./touch.js";
 import { createMarket, getMarket, listMarkets, poolImpliedYes, poolTotals, resolveMarket, stake } from "./markets.js";
 import { receiptForTick } from "./proofs.js";
 import { loadOrComputeCalibration, pricingDiscount } from "./calibration.js";
+import { registerChainRoutes } from "./chain/routes.js";
+import { startBots } from "./chain/bots.js";
 
 const app = Fastify({ logger: { level: "info" } });
 await app.register(cors, { origin: true, methods: ["GET", "POST"] });
@@ -15,6 +17,9 @@ await app.register(cors, { origin: true, methods: ["GET", "POST"] });
 /** Calibration is corpus-wide and cached; the pricing discount derives from it. */
 let calibration = loadOrComputeCalibration();
 let discount = pricingDiscount(calibration);
+
+// On-chain devnet market routes (mock SPL escrow) + the dealer/resolver, sharing the SDK data layer.
+registerChainRoutes(app, { getFixture, pathFor, openingProbe: (p, s) => openingProbe(p as never, s), discount: () => discount });
 
 const asSide = (v: unknown): Side | null =>
   typeof v === "string" && (SIDES as string[]).includes(v) ? (v as Side) : null;
@@ -150,7 +155,12 @@ app.post("/api/calibration/refresh", async () => {
 
 app
   .listen({ port: config.port, host: "127.0.0.1" })
-  .then(() => app.log.info(`touchline api on :${config.port}, corpus=${config.corpusDb}`))
+  .then(() => {
+    app.log.info(`touchline api on :${config.port}, corpus=${config.corpusDb}`);
+    if (process.env.TOUCHLINE_BOTS === "1") {
+      startBots({ getFixture, pathFor, openingProbe: (p, s) => openingProbe(p as never, s), discount: () => discount }).catch((e) => app.log.error(e));
+    }
+  })
   .catch((e) => {
     app.log.error(e);
     process.exit(1);

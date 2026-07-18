@@ -404,3 +404,21 @@ a.brand:hover { opacity: 0.82; }
   font-family: Futura, "Century Gothic", sans-serif; font-size: 0.78rem; font-weight: 700;
   letter-spacing: 0.05em; color: var(--ink-2); }
 .showall:hover { border-color: var(--pitch); color: var(--pitch); border-style: solid; }
+
+/* ══════════════════════════════════════════════════════
+   market / detail page (single fixture, no rail)
+   ══════════════════════════════════════════════════════ */
+.appbar .backlink {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: Futura, "Century Gothic", sans-serif;
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em;
+  text-decoration: none; color: var(--ink-2);
+  padding: 6px 11px 6px 8px; border-radius: 9px;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+.appbar .backlink:hover { color: var(--pitch); background: var(--surface-2); }
+
+/* the detail column centres itself now that the rail is gone; the match header,
+   previously carried by the mobile switcher, always shows here */
+.main.detail { max-width: 940px; margin: 0 auto; overflow: visible; }
+.main.detail .matchhead { display: flex; }

@@ -11,7 +11,7 @@ export function loadProgram(conn?: Connection, signer?: Keypair) {
   const kp = signer ?? houseKeypair();
   const provider = new AnchorProvider(c, new Wallet(kp), { commitment: "confirmed" });
   const idl = JSON.parse(readFileSync(IDL_PATH, "utf8"));
-  const program = new Program(idl, provider);
+  const program = new Program(idl, provider) as any;
   return { program, provider, conn: c, house: kp };
 }
 

@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import type { Fixture, PathPoint, Side } from "../api.js";
+import type { Fixture, PathPoint } from "../api.js";
+import type { Group } from "../groups.js";
 import { flag } from "../flags.js";
 import { Sparkline } from "./Sparkline.js";
-import {
-  code, countdown, favouriteOf, fetchPath, fmtKickoff, fmtTicks, type Group, sideName,
-} from "./util.js";
+import { code, countdown, favouriteOf, fmtKickoff, fmtTicks, loadPath, sideName } from "./util.js";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 export function FixtureTile({
-  f, group, index, now, onOpen,
+  f, group, index, now,
 }: {
   f: Fixture;
   group: Group;
   index: number;
   now: number;
-  onOpen: (fixtureId: number, side?: Side, barrier?: number) => void;
 }) {
-  const ref = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLAnchorElement>(null);
   const [path, setPath] = useState<PathPoint[] | null>(null);
   const [state, setState] = useState<LoadState>("idle");
 
@@ -32,7 +30,7 @@ export function FixtureTile({
         fetched = true;
         io.disconnect();
         setState("loading");
-        fetchPath(f.fixtureId, 12)
+        loadPath(f.fixtureId)
           .then((p) => { setPath(p); setState("ready"); })
           .catch(() => setState("error"));
       },
@@ -68,12 +66,11 @@ export function FixtureTile({
   );
 
   return (
-    <button
+    <a
       ref={ref}
-      type="button"
+      href={`#/m/${f.fixtureId}`}
       className="tl-tile"
       style={{ ["--i" as string]: Math.min(index, 14), ...(fav ? { ["--fav" as string]: fav.color } : {}) }}
-      onClick={() => onOpen(f.fixtureId, fav?.side)}
       aria-label={aria}
     >
       <div className="tl-top">
@@ -116,6 +113,6 @@ export function FixtureTile({
         <span className="tl-ticks mono">{fmtTicks(f.oddsTickCount)} anchored ticks</span>
         <span className="tl-open">Open<span className="tl-arrow" aria-hidden="true">→</span></span>
       </div>
-    </button>
+    </a>
   );
 }

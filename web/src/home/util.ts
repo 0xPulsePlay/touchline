@@ -1,21 +1,13 @@
 import type { Fixture, PathPoint, Side } from "../api.js";
+import type { Group } from "../groups.js";
 
 /* ────────────────────────────────────────────────────────────────────────
- * Home path-picker helpers. Self-contained on purpose: the market view owns
- * its own fetch client (../api.ts, edited concurrently), so this feature only
- * borrows *types* from it and talks to the documented endpoints directly.
+ * Home path-picker helpers. Grouping is sourced from the shared ../groups.ts
+ * (one source of truth with the market view); the rest is picker-specific.
  * ──────────────────────────────────────────────────────────────────────── */
 
-export type Group = "live" | "upcoming" | "finished";
-
-/** Same rule the market view uses: future = upcoming, started-and-recent-and-not-final = live. */
-export function groupOf(f: Fixture, now: number): Group {
-  if (f.startTime > now) return "upcoming";
-  if (!f.isFinal && now - f.startTime < 5 * 3600_000) return "live";
-  return "finished";
-}
-
-export const GROUP_META: Record<Group, { label: string; kicker: string; live?: boolean }> = {
+/** Section chrome for the three home buckets — a label + an editorial kicker. */
+export const SECTION_META: Record<Group, { label: string; kicker: string; live?: boolean }> = {
   live: { label: "Live now", kicker: "moving in real time", live: true },
   upcoming: { label: "Upcoming", kicker: "pre-match lines open" },
   finished: { label: "Full time", kicker: "settled paths, replayable" },
@@ -28,7 +20,7 @@ export const SIDE_COLOR: Record<Side, string> = {
   part2: "var(--away)",
 };
 
-/* ── endpoints (raw fetch — decoupled from the concurrently-edited api.ts) ── */
+/* ── endpoints (raw fetch — decoupled from the market view's api client) ── */
 
 export async function fetchFixtures(): Promise<Fixture[]> {
   const r = await fetch("/api/fixtures");
@@ -36,11 +28,32 @@ export async function fetchFixtures(): Promise<Fixture[]> {
   return (await r.json()) as Fixture[];
 }
 
-export async function fetchPath(id: number, every = 12): Promise<PathPoint[]> {
-  const r = await fetch(`/api/fixtures/${id}/path?every=${every}`);
-  if (!r.ok) throw new Error(`path ${r.status}`);
-  const data = (await r.json()) as { path?: PathPoint[] };
-  return data.path ?? [];
+/** Coarse path just for a tile sparkline — every=30 keeps the payload small. */
+const EVERY = 30;
+const pathCache = new Map<number, PathPoint[]>();
+const inflight = new Map<number, Promise<PathPoint[]>>();
+
+/** Fetch-once-per-fixture path loader shared across tiles; survives home↔market nav. */
+export function loadPath(id: number): Promise<PathPoint[]> {
+  const cached = pathCache.get(id);
+  if (cached) return Promise.resolve(cached);
+  let p = inflight.get(id);
+  if (!p) {
+    p = fetch(`/api/fixtures/${id}/path?every=${EVERY}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`path ${r.status}`);
+        return r.json() as Promise<{ path?: PathPoint[] }>;
+      })
+      .then((d) => {
+        const path = d.path ?? [];
+        pathCache.set(id, path);
+        inflight.delete(id);
+        return path;
+      })
+      .catch((e) => { inflight.delete(id); throw e; });
+    inflight.set(id, p);
+  }
+  return p;
 }
 
 /* ── favourite selection ──────────────────────────────────────────────── */
