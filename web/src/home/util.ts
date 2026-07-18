@@ -82,7 +82,7 @@ const CODE: Record<string, string> = {
 };
 
 export function code(team: string): string {
-  return CODE[team] ?? team.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase() || "—";
+  return CODE[team] ?? (team.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase() || "—");
 }
 
 /** Compact, trust-cue tick counts: 5_512_340 → "5.5M". */

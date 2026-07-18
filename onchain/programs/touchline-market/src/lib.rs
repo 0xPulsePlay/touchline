@@ -82,6 +82,12 @@ pub mod touchline_market {
         require!(amount > 0, MarketError::ZeroAmount);
         require!(amount <= ctx.accounts.config.bet_cap, MarketError::OverCap);
         require!(price_bps > 0 && price_bps <= 10_000, MarketError::BadPrice);
+        // cross-account checks in-handler (accounts fully loaded here — avoids validation-order reads)
+        require_keys_eq!(ctx.accounts.house.key(), ctx.accounts.market.house, MarketError::NotHouse);
+        require_keys_eq!(ctx.accounts.user_token.mint, ctx.accounts.market.mint, MarketError::WrongMint);
+        require_keys_eq!(ctx.accounts.house_token.mint, ctx.accounts.market.mint, MarketError::WrongMint);
+        require_keys_eq!(ctx.accounts.user_token.owner, ctx.accounts.user.key(), MarketError::WrongOwner);
+        require_keys_eq!(ctx.accounts.house_token.owner, ctx.accounts.house.key(), MarketError::WrongOwner);
 
         // payout = amount / price ; liability = payout − amount (both in token base units)
         let payout = (amount as u128)
@@ -290,8 +296,8 @@ pub struct CreateMarket<'info> {
 pub struct PlaceBet<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    /// The dealer co-signs every bet — this gates price and cap.
-    #[account(mut, address = market.house @ MarketError::NotHouse)]
+    /// The dealer co-signs every bet — this gates price and cap. Verified == market.house in-handler.
+    #[account(mut)]
     pub house: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
@@ -299,9 +305,10 @@ pub struct PlaceBet<'info> {
     pub market: Account<'info, Market>,
     #[account(mut, seeds = [b"vault".as_ref(), market.key().as_ref()], bump = market.vault_bump)]
     pub vault: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = market.mint, token::authority = user)]
+    /// mint/owner verified against the market in-handler (avoids validation-order cross-reads)
+    #[account(mut)]
     pub user_token: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = market.mint, token::authority = house)]
+    #[account(mut)]
     pub house_token: Account<'info, TokenAccount>,
     #[account(
         init, payer = user, space = Bet::SPACE,
@@ -360,6 +367,8 @@ pub enum MarketError {
     #[msg("price bps must be in (0,10000]")] BadPrice,
     #[msg("arithmetic overflow")] Overflow,
     #[msg("signer is not the market house")] NotHouse,
+    #[msg("token mint does not match market")] WrongMint,
+    #[msg("token account owner mismatch")] WrongOwner,
     #[msg("market already resolved")] AlreadyResolved,
     #[msg("market not resolved")] NotResolved,
     #[msg("signer is not the resolver")] NotResolver,

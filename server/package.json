@@ -11,11 +11,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "@fastify/cors": "^10.0.0",
+    "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.95.0",
     "@txline/client-sdk": "file:../../txline-explorer/packages/client-sdk",
     "@txline/verify": "file:../../txline-explorer-validation-lab/packages/verify",
     "better-sqlite3": "^11.5.0",
+    "bn.js": "^5.2.5",
     "fastify": "^5.0.0"
   },
   "devDependencies": {

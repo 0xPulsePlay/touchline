@@ -63,6 +63,7 @@ export function Sparkline({ path, side }: { path: PathPoint[]; side: Side }) {
         d={d(side)}
         fill="none"
         stroke="currentColor"
+        pathLength={1}
         vectorEffect="non-scaling-stroke"
         strokeLinejoin="round"
         strokeLinecap="round"

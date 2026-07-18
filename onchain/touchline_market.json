@@ -265,7 +265,7 @@
         {
           "name": "house",
           "docs": [
-            "The dealer co-signs every bet — this gates price and cap."
+            "The dealer co-signs every bet — this gates price and cap. Verified == market.house in-handler."
           ],
           "writable": true,
           "signer": true
@@ -316,6 +316,9 @@
         },
         {
           "name": "user_token",
+          "docs": [
+            "mint/owner verified against the market in-handler (avoids validation-order cross-reads)"
+          ],
           "writable": true
         },
         {
@@ -616,26 +619,36 @@
     },
     {
       "code": 6009,
+      "name": "WrongMint",
+      "msg": "token mint does not match market"
+    },
+    {
+      "code": 6010,
+      "name": "WrongOwner",
+      "msg": "token account owner mismatch"
+    },
+    {
+      "code": 6011,
       "name": "AlreadyResolved",
       "msg": "market already resolved"
     },
     {
-      "code": 6010,
+      "code": 6012,
       "name": "NotResolved",
       "msg": "market not resolved"
     },
     {
-      "code": 6011,
+      "code": 6013,
       "name": "NotResolver",
       "msg": "signer is not the resolver"
     },
     {
-      "code": 6012,
+      "code": 6014,
       "name": "AlreadyClaimed",
       "msg": "bet already claimed"
     },
     {
-      "code": 6013,
+      "code": 6015,
       "name": "NotWinner",
       "msg": "token account owner is not the winning side"
     }

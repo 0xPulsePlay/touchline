@@ -87,7 +87,7 @@ export function FixtureTile({
         )}
       </div>
 
-      <div className="tl-teams">
+      <div className={`tl-teams${f.isFinal ? " final" : ""}`}>
         {team("part1", f.participant1, f.finalP1)}
         <span className="tl-vs" aria-hidden="true">vs</span>
         {team("part2", f.participant2, f.finalP2)}
