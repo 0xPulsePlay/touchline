@@ -3,6 +3,7 @@ import { api, type Calibration, type Fixture, type Market, type PathResponse, ty
 import { flag } from "./flags.js";
 import { PathChart } from "./PathChart.js";
 import { buildScale } from "./timeline.js";
+import { connectWallet, disconnectWallet, rememberedWallet, shortKey } from "./wallet.js";
 
 const fmtDay = (ts: number) =>
   new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
@@ -10,9 +11,65 @@ const fmtDay = (ts: number) =>
 
 const pct = (v: number, dp = 1) => `${(v * 100).toFixed(dp)}%`;
 
+type Group = "live" | "upcoming" | "finished";
+function groupOf(f: Fixture, now: number): Group {
+  if (f.startTime > now) return "upcoming";
+  if (!f.isFinal && now - f.startTime < 5 * 3600_000) return "live";
+  return "finished";
+}
+
+const GROUP_META: Record<Group, { label: string; live?: boolean }> = {
+  live: { label: "Live now", live: true },
+  upcoming: { label: "Upcoming" },
+  finished: { label: "Finished" },
+};
+
+function FixtureRow({ f, sel, onPick, group }: { f: Fixture; sel: boolean; onPick: (f: Fixture) => void; group: Group }) {
+  return (
+    <button className={`fx${sel ? " sel" : ""}`} onClick={() => onPick(f)}>
+      <span className="teams">{flag(f.participant1)} {f.participant1} — {f.participant2} {flag(f.participant2)}</span>
+      <span className="score">{f.isFinal ? `${f.finalP1 ?? "–"}–${f.finalP2 ?? "–"}` : group === "live" ? "LIVE" : ""}</span>
+      <span className="meta">{fmtDay(f.startTime)} · {f.oddsTickCount.toLocaleString()} ticks</span>
+    </button>
+  );
+}
+
+function GroupedList({ fixtures, sel, onPick, filter }: {
+  fixtures: Fixture[]; sel: Fixture | null; onPick: (f: Fixture) => void; filter: string;
+}) {
+  const now = Date.now();
+  const shown = fixtures.filter((f) =>
+    `${f.participant1} ${f.participant2}`.toLowerCase().includes(filter.toLowerCase()),
+  );
+  const groups: Group[] = ["live", "upcoming", "finished"];
+  return (
+    <>
+      {groups.map((g) => {
+        const list = shown
+          .filter((f) => groupOf(f, now) === g)
+          .sort((a, b) => (g === "finished" ? b.startTime - a.startTime : a.startTime - b.startTime));
+        if (!list.length) return null;
+        const meta = GROUP_META[g];
+        return (
+          <div key={g}>
+            <div className={`grouphead${meta.live ? " live" : ""}`}>
+              {meta.live && <span className="livedot" aria-hidden="true" />} {meta.label}
+              <span style={{ fontWeight: 400 }}>· {list.length}</span>
+            </div>
+            {list.map((f) => (
+              <FixtureRow key={f.fixtureId} f={f} sel={sel?.fixtureId === f.fixtureId} onPick={onPick} group={g} />
+            ))}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function App() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [filter, setFilter] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [sel, setSel] = useState<Fixture | null>(null);
   const [pathRes, setPathRes] = useState<PathResponse | null>(null);
   const [side, setSide] = useState<Side>("part1");
@@ -24,14 +81,16 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<string | null>(rememberedWallet());
   const raf = useRef(0);
 
   useEffect(() => {
     api.fixtures().then((fx) => {
-      const sorted = [...fx].sort((a, b) => b.startTime - a.startTime);
-      setFixtures(sorted);
-      const semi = sorted.find((f) => f.fixtureId === 18241006) ?? sorted.find((f) => f.isFinal) ?? sorted[0] ?? null;
-      if (semi) select(semi);
+      setFixtures(fx);
+      const now = Date.now();
+      const live = fx.filter((f) => groupOf(f, now) === "live").sort((a, b) => a.startTime - b.startTime)[0];
+      const pick = live ?? fx.find((f) => f.fixtureId === 18241006) ?? fx.find((f) => f.isFinal) ?? fx[0] ?? null;
+      if (pick) select(pick);
     }).catch((e) => setErr(String(e)));
     api.calibration().then(setCal).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -39,6 +98,7 @@ export function App() {
 
   const select = useCallback((f: Fixture) => {
     setSel(f);
+    setSheetOpen(false);
     setPathRes(null);
     setMarkets([]);
     setPlaying(false);
@@ -47,7 +107,6 @@ export function App() {
     api.markets(f.fixtureId).then(setMarkets).catch(() => {});
   }, []);
 
-  // quote refresh
   useEffect(() => {
     if (!sel) return;
     let dead = false;
@@ -55,17 +114,14 @@ export function App() {
     return () => { dead = true; };
   }, [sel, side, barrier]);
 
-  // replay animation
   useEffect(() => {
     if (!playing || !pathRes) return;
     const total = pathRes.path.length;
-    const startIdx = cursor >= total ? 0 : cursor;
-    let i = startIdx;
+    let i = cursor >= total ? 0 : cursor;
     let last = performance.now();
     const step = (now: number) => {
-      const dt = now - last;
+      i += ((now - last) / 1000) * (total / 25);
       last = now;
-      i += (dt / 1000) * (total / 25); // full match replays in ~25s
       if (i >= total) { setCursor(1e9); setPlaying(false); return; }
       setCursor(Math.floor(i));
       raf.current = requestAnimationFrame(step);
@@ -112,211 +168,213 @@ export function App() {
     } catch (e) { setErr(String(e)); } finally { setBusy(null); }
   };
 
-  const shown = fixtures.filter((f) =>
-    `${f.participant1} ${f.participant2}`.toLowerCase().includes(filter.toLowerCase()),
-  );
+  const toggleWallet = async () => {
+    if (wallet) { await disconnectWallet(); setWallet(null); return; }
+    try { setWallet(await connectWallet()); } catch { /* user dismissed */ }
+  };
 
   const visibleCursor = pathRes ? Math.min(cursor, pathRes.path.length) : 0;
+  const now = Date.now();
+  const selGroup = sel ? groupOf(sel, now) : "finished";
 
   return (
-    <div className="shell">
-      <aside className="rail">
-        <div className="brand">
-          <h1>TOUCH<span className="tick">LINE</span></h1>
-          <div className="tag">options on the probability path</div>
-          <div className="stats mono">{fixtures.length} fixtures · 5.5M anchored ticks</div>
-        </div>
-        <div className="search">
-          <input placeholder="Search teams…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="search fixtures" />
-        </div>
-        <div className="fixtures">
-          {shown.map((f) => (
-            <button key={f.fixtureId} className={`fx${sel?.fixtureId === f.fixtureId ? " sel" : ""}`} onClick={() => select(f)}>
-              <span className="teams">{flag(f.participant1)} {f.participant1} — {f.participant2} {flag(f.participant2)}</span>
-              <span className="score">{f.isFinal ? `${f.finalP1 ?? "–"}–${f.finalP2 ?? "–"}` : ""}</span>
-              <span className="meta">{fmtDay(f.startTime)} · {f.oddsTickCount.toLocaleString()} ticks</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+    <>
+      <header className="appbar">
+        <h1 className="brand">TOUCH<span className="tick">LINE</span></h1>
+        <div className="spacer" />
+        <button className={`walletbtn${wallet ? " connected" : ""}`} onClick={toggleWallet}
+          title={wallet ? "Disconnect" : "Connect Phantom"}>
+          {wallet ? <><span className="wdot" aria-hidden="true" /> {shortKey(wallet)}</> : "Connect wallet"}
+        </button>
+      </header>
 
-      <main className="main">
-        {!sel ? (
-          <div className="empty">Pick a match.</div>
-        ) : (
-          <>
-            <div className="matchhead">
-              <span className="vs display">
-                {flag(sel.participant1)} {sel.participant1} {sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs"} {sel.participant2} {flag(sel.participant2)}
-              </span>
-              <span className={`badge${sel.isFinal ? " ft" : ""}`}>{sel.isFinal ? "Full time" : "Scheduled"}</span>
-              <span className="when">{fmtDay(sel.startTime)} · {sel.competition}</span>
-            </div>
+      <div className="shell">
+        <aside className="rail">
+          <div className="search">
+            <input placeholder="Search teams…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="search fixtures" />
+          </div>
+          <div className="lists">
+            <GroupedList fixtures={fixtures} sel={sel} onPick={select} filter={filter} />
+          </div>
+        </aside>
 
-            <section className="panel">
-              <h2>Probability path — 1X2, de-margined</h2>
-              {pathRes ? (
-                <div className="chartwrap">
-                  <PathChart
-                    path={pathRes.path}
-                    startTime={sel.startTime}
-                    timeline={pathRes.timeline}
-                    names={names}
-                    side={side}
-                    barrier={barrier}
-                    cursor={visibleCursor}
-                  />
-                  <div className="replaybar">
-                    <button className="playbtn" aria-label={playing ? "pause replay" : "replay match"}
-                      onClick={() => {
-                        if (!playing && visibleCursor >= pathRes.path.length) setCursor(0);
-                        setPlaying(!playing);
-                      }}>
-                      {playing ? "❚❚" : "▶"}
-                    </button>
-                    <input type="range" min={2} max={pathRes.path.length} value={visibleCursor}
-                      onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }}
-                      aria-label="scrub replay" />
-                    <span className="clock mono">
-                      {(() => {
-                        const p = pathRes.path[Math.max(0, visibleCursor - 1)];
-                        if (!p) return "";
-                        return clockLabel
-                          ? clockLabel(p.ts)
-                          : `+${Math.max(0, Math.round((p.ts - sel.startTime) / 60000))}m wall`;
-                      })()} · {pathRes.tickCount.toLocaleString()} ticks
-                    </span>
+        <main className="main">
+          <button className="switcher" onClick={() => setSheetOpen(true)} aria-label="change match">
+            {sel ? (
+              <>
+                <span className="swteams">{flag(sel.participant1)} {sel.participant1} {sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs"} {sel.participant2} {flag(sel.participant2)}</span>
+                <span className="swmeta">{selGroup === "live" ? "LIVE" : fmtDay(sel.startTime)}</span>
+              </>
+            ) : (
+              <span className="swteams">Pick a match…</span>
+            )}
+            <span className="caret" aria-hidden="true">▾</span>
+          </button>
+
+          {sel && (
+            <>
+              <div className="matchhead">
+                <span className="vs display">
+                  {flag(sel.participant1)} {sel.participant1} {sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs"} {sel.participant2} {flag(sel.participant2)}
+                </span>
+                <span className={`badge${sel.isFinal ? " ft" : selGroup === "live" ? " live" : ""}`}>
+                  {sel.isFinal ? "Full time" : selGroup === "live" ? "Live" : "Scheduled"}
+                </span>
+                <span className="when">{fmtDay(sel.startTime)} · {sel.competition}</span>
+              </div>
+
+              <section className="panel">
+                <h2>Probability path</h2>
+                {pathRes ? (
+                  <>
+                    <PathChart
+                      path={pathRes.path}
+                      startTime={sel.startTime}
+                      timeline={pathRes.timeline}
+                      names={names}
+                      side={side}
+                      barrier={barrier}
+                      cursor={visibleCursor}
+                    />
+                    <div className="replaybar">
+                      <button className="playbtn" aria-label={playing ? "pause replay" : "replay match"}
+                        onClick={() => {
+                          if (!playing && visibleCursor >= pathRes.path.length) setCursor(0);
+                          setPlaying(!playing);
+                        }}>
+                        {playing ? "❚❚" : "▶"}
+                      </button>
+                      <input type="range" min={2} max={pathRes.path.length} value={visibleCursor}
+                        onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }}
+                        aria-label="scrub replay" />
+                      <span className="clock mono">
+                        {(() => {
+                          const p = pathRes.path[Math.max(0, visibleCursor - 1)];
+                          return p && clockLabel ? clockLabel(p.ts) : "";
+                        })()}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty">Loading path…</div>
+                )}
+              </section>
+
+              <section className="panel">
+                <h2>One-touch market</h2>
+                <div className="builder">
+                  <div className="seg" role="group" aria-label="side">
+                    {(["part1", "draw", "part2"] as Side[]).map((k) => (
+                      <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
+                        {k === "draw" ? "🤝 Draw" : `${flag(names[k])} ${names[k]}`}
+                      </button>
+                    ))}
                   </div>
-                </div>
-              ) : (
-                <div className="empty">Loading path…</div>
-              )}
-            </section>
-
-            <section className="panel">
-              <h2>Open a one-touch market</h2>
-              <div className="builder">
-                <div className="seg" role="group" aria-label="side">
-                  {(["part1", "draw", "part2"] as Side[]).map((k) => (
-                    <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
-                      {k === "draw" ? "🤝 Draw" : `${flag(names[k])} ${names[k]}`}
-                    </button>
-                  ))}
-                </div>
-                <div className="barrierbox">
-                  <span className="mono" style={{ fontSize: ".75rem", color: "var(--ink-3)" }}>touches</span>
-                  <input type="range" min={5} max={95} step={1} value={barrier}
-                    onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
-                  <span className="bval mono">{barrier}%</span>
-                </div>
-                <div className="quotecard">
-                  {quote ? (
-                    <>
-                      <div className="fair">{pct(quote.fair)}</div>
-                      <div className="decomp mono">
-                        bound p/B = {quote.p0.toFixed(1)}/{quote.barrier} = {pct(quote.bound)} × {quote.discount.toFixed(2)} measured
-                      </div>
+                  <div className="barrierbox">
+                    <span className="mono" style={{ fontSize: ".72rem", color: "var(--ink-3)" }}>touches</span>
+                    <input type="range" min={5} max={95} step={1} value={barrier}
+                      onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
+                    <span className="bval mono">{barrier}%</span>
+                  </div>
+                  {quote && (
+                    <div className="quoteline">
+                      <span className="fair">{pct(quote.fair)}</span>
+                      <span className="decomp mono">
+                        p/B = {quote.p0.toFixed(1)}/{quote.barrier} = {pct(quote.bound)} × {quote.discount.toFixed(2)}
+                      </span>
                       <button className="cta" onClick={openMarket} disabled={busy === "create"}>
                         {busy === "create" ? "Opening…" : "Open market"}
                       </button>
-                    </>
-                  ) : (
-                    <div className="decomp">no quote</div>
+                    </div>
                   )}
+                  <details className="why">
+                    <summary>Why p/B?</summary>
+                    <div className="whybody">
+                      A de-margined probability is a martingale ending in {"{0,1}"}. Stopping at the first
+                      touch of <i>B</i>: <i>p = B·P(touch)</i>, and a path that never touches <i>B</i> can't
+                      reach 1 — so <i>P(touch) = p/B</i>. Goals jump, so p/B is an upper bound; the
+                      ×{(quote?.discount ?? 0.87).toFixed(2)} is measured across {cal?.fixtures ?? "—"} real matches.
+                    </div>
+                  </details>
                 </div>
-              </div>
-              <div className="theorem">
-                <b>Why p/B?</b> A de-margined probability is a martingale ending in {"{0,1}"}. Stopping at the
-                first touch of <i>B</i>: <i>p = B·P(touch) + 0·P(never)</i>, and a path that never touches
-                <i> B</i> cannot reach 1 — so <i>P(touch) = p/B</i>. Goals jump, so p/B is an upper bound;
-                the ×{cal ? (quote?.discount ?? 0.87).toFixed(2) : "…"} is the discount measured across{" "}
-                {cal?.fixtures ?? "…"} real matches.
-              </div>
-            </section>
+              </section>
 
-            <section className="panel">
-              <h2>Markets on this match</h2>
-              {markets.length === 0 && <div className="empty">None yet — open one above.</div>}
-              {markets.map((m) => {
-                const total = m.pools.yes + m.pools.no;
-                const rec = m.resolution?.receipt;
-                const v = rec?.verification ?? null;
-                return (
-                  <div className="mkt" key={m.id}>
-                    <div className="row1">
-                      <span className="q">
-                        {m.side === "draw" ? "Draw" : names[m.side]} touches {m.barrierPct}%?
-                      </span>
-                      <span className={`chip ${m.status === "open" ? "open" : m.status === "resolved_yes" ? "yes" : "no"}`}>
-                        {m.status === "open" ? "Open" : m.status === "resolved_yes" ? "YES · touched" : "NO · never touched"}
-                      </span>
-                      <span className="mono" style={{ marginLeft: "auto", fontSize: ".78rem", color: "var(--ink-2)" }}>
-                        opened at fair {pct(m.quoteAtCreate.fair)}
-                      </span>
-                    </div>
-                    <div className="poolbar" aria-hidden="true">
-                      <div className="y" style={{ width: `${(m.pools.yes / Math.max(1, total)) * 100}%` }} />
-                      <div className="n" style={{ flex: 1 }} />
-                    </div>
-                    <div className="nums mono">
-                      <span>YES pool {m.pools.yes}</span>
-                      <span>NO pool {m.pools.no}</span>
-                      <span>pool-implied {pct(m.poolImpliedYes)}</span>
-                      {m.resolution && <span>payout ×{m.resolution.payoutPerUnit.toFixed(2)} per unit</span>}
-                      {m.resolution?.evidence && (
-                        <span>evidence: {m.resolution.evidence.pct.toFixed(2)}% @ tick {m.resolution.evidence.messageId.slice(0, 18)}…</span>
+              <section className="panel">
+                <h2>Markets</h2>
+                {markets.length === 0 && <div className="empty">None yet — open one above.</div>}
+                {markets.map((m) => {
+                  const total = m.pools.yes + m.pools.no;
+                  const rec = m.resolution?.receipt;
+                  const v = rec?.verification ?? null;
+                  return (
+                    <div className="mkt" key={m.id}>
+                      <div className="row1">
+                        <span className="q">
+                          {m.side === "draw" ? "Draw" : names[m.side]} touches {m.barrierPct}%?
+                        </span>
+                        <span className={`chip ${m.status === "open" ? "open" : m.status === "resolved_yes" ? "yes" : "no"}`}>
+                          {m.status === "open" ? "Open" : m.status === "resolved_yes" ? "YES · touched" : "NO"}
+                        </span>
+                      </div>
+                      <div className="poolbar" aria-hidden="true">
+                        <div className="y" style={{ width: `${(m.pools.yes / Math.max(1, total)) * 100}%` }} />
+                        <div className="n" />
+                      </div>
+                      <div className="nums mono">
+                        <span>YES {m.pools.yes}</span>
+                        <span>NO {m.pools.no}</span>
+                        <span>implied {pct(m.poolImpliedYes)}</span>
+                        <span>opened {pct(m.quoteAtCreate.fair)}</span>
+                        {m.resolution && <span>pays ×{m.resolution.payoutPerUnit.toFixed(2)}</span>}
+                      </div>
+                      {m.status === "open" && (
+                        <div className="actions">
+                          <button className="btn2" onClick={() => doStake(m, "yes")} disabled={busy === m.id}>+25 YES</button>
+                          <button className="btn2" onClick={() => doStake(m, "no")} disabled={busy === m.id}>+25 NO</button>
+                          <button className="btn2 primary" onClick={() => doResolve(m)} disabled={busy === m.id}>
+                            {busy === m.id ? "Verifying proof…" : "Resolve"}
+                          </button>
+                        </div>
+                      )}
+                      {rec && (
+                        <details className={`receipt${rec.verified ? "" : " bad"}`}>
+                          <summary>{rec.verified ? "✓ Proof verified against Solana" : "✗ Proof not verified"}</summary>
+                          <div className="rbody">
+                            {v ? (
+                              <>
+                                {m.resolution?.evidence && (
+                                  <div className="rstep"><span className="ok">⚡</span>
+                                    <span>evidence tick: {m.resolution.evidence.pct.toFixed(2)}% · <code>{m.resolution.evidence.messageId}</code></span></div>
+                                )}
+                                <div className="rstep"><span className={v.subTreeVerified ? "ok" : "fail"}>{v.subTreeVerified ? "✓" : "✗"}</span><span>odds tick leaf → odds sub-tree root</span></div>
+                                <div className="rstep"><span className={v.mainTreeVerified ? "ok" : "fail"}>{v.mainTreeVerified ? "✓" : "✗"}</span>
+                                  <span>summary leaf → slot root · <code>{v.computedRootHex.slice(0, 16)}…</code> = on-chain <code>{(v.onChainRootHex ?? "").slice(0, 16)}…</code></span></div>
+                                <div className="rstep"><span className={v.pdaEpochDayMatches ? "ok" : "fail"}>{v.pdaEpochDayMatches ? "✓" : "✗"}</span>
+                                  <span>anchored in <code>daily_batch_roots</code> · epochDay {v.epochDay}, slot {v.fiveMinSlot}</span></div>
+                                <div className="rfoot">
+                                  PDA <code>{v.pda.slice(0, 14)}…</code> ·{" "}
+                                  <a href={`https://solscan.io/account/${v.pda}`} target="_blank" rel="noreferrer">view anchor account ↗</a>
+                                </div>
+                              </>
+                            ) : (
+                              <div>{rec.error ?? "no verification detail"}</div>
+                            )}
+                          </div>
+                        </details>
                       )}
                     </div>
-                    {m.status === "open" && (
-                      <div className="actions">
-                        <button className="btn2" onClick={() => doStake(m, "yes")} disabled={busy === m.id}>+25 YES</button>
-                        <button className="btn2" onClick={() => doStake(m, "no")} disabled={busy === m.id}>+25 NO</button>
-                        <button className="btn2 primary" onClick={() => doResolve(m)} disabled={busy === m.id}>
-                          {busy === m.id ? "Verifying proof…" : "Resolve from anchored path"}
-                        </button>
-                      </div>
-                    )}
-                    {rec && (
-                      <div className={`receipt${rec.verified ? "" : " bad"}`}>
-                        <div className="rhead">
-                          {rec.verified ? "✓ PROOF VERIFIED AGAINST SOLANA" : "✗ PROOF NOT VERIFIED"}
-                        </div>
-                        <div className="rbody">
-                          {v ? (
-                            <>
-                              <div className="rstep"><span className={v.subTreeVerified ? "ok" : "fail"}>{v.subTreeVerified ? "✓" : "✗"}</span><span>odds tick leaf → odds sub-tree root (Merkle walk)</span></div>
-                              <div className="rstep"><span className={v.mainTreeVerified ? "ok" : "fail"}>{v.mainTreeVerified ? "✓" : "✗"}</span>
-                                <span>summary leaf → 5-min slot root · computed <code>{v.computedRootHex.slice(0, 18)}…</code> = on-chain <code>{(v.onChainRootHex ?? "").slice(0, 18)}…</code></span></div>
-                              <div className="rstep"><span className={v.pdaEpochDayMatches ? "ok" : "fail"}>{v.pdaEpochDayMatches ? "✓" : "✗"}</span>
-                                <span>anchored in <code>daily_batch_roots</code> PDA <code>{v.pda}</code> (epochDay {v.epochDay}, slot {v.fiveMinSlot})</span></div>
-                              <div className="rfoot">
-                                program <code>{v.programId.slice(0, 10)}…</code> · fixture {v.namespacedFixtureId} ·{" "}
-                                <a href={`https://solscan.io/account/${v.pda}`} target="_blank" rel="noreferrer">view the anchor account ↗</a>
-                              </div>
-                            </>
-                          ) : (
-                            <div>{rec.error ?? "no verification detail"}</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {err && <div className="err mono">{err}</div>}
-            </section>
+                  );
+                })}
+                {err && <div className="err mono">{err}</div>}
+              </section>
 
-            <section className="panel">
-              <h2>Calibration — the corpus vs the theorem</h2>
-              {cal ? (
-                <>
-                  <div className="calhead">
-                    Across <b>{cal.fixtures}</b> finished matches ({cal.samples.length} outcome paths), real touches run at{" "}
-                    <b>~87%</b> of the martingale bound — the measured price of goal-jumps.
-                  </div>
-                  <div className="calgrid">
-                    <div className="calrow" style={{ color: "var(--ink-3)", fontSize: ".68rem", textTransform: "uppercase", letterSpacing: ".1em" }}>
-                      <span>Barrier</span><span>observed rate (solid) vs p/B bound (ghost)</span><span style={{ textAlign: "right" }}>obs / bound / n</span>
+              <section className="panel">
+                <h2>Calibration</h2>
+                {cal ? (
+                  <>
+                    <div className="calhead">
+                      <b>~87%</b> — how often real paths touch, as a share of the p/B bound
+                      ({cal.fixtures} matches, {cal.samples.length} paths).
                     </div>
                     {cal.buckets.filter((b) => b.n >= 30).map((b) => (
                       <div className="calrow" key={b.barrier}>
@@ -326,19 +384,35 @@ export function App() {
                           <div className="obs" style={{ width: `${b.observedRate * 100}%` }} />
                         </div>
                         <span className="mono" style={{ textAlign: "right" }}>
-                          {pct(b.observedRate, 0)} / {pct(b.meanBound, 0)} / {b.n}
+                          {pct(b.observedRate, 0)} vs {pct(b.meanBound, 0)}
                         </span>
                       </div>
                     ))}
-                  </div>
-                </>
-              ) : (
-                <div className="empty">Loading calibration…</div>
-              )}
-            </section>
-          </>
-        )}
-      </main>
-    </div>
+                  </>
+                ) : (
+                  <div className="empty">Loading calibration…</div>
+                )}
+              </section>
+            </>
+          )}
+        </main>
+      </div>
+
+      {sheetOpen && (
+        <>
+          <div className="sheet-backdrop" onClick={() => setSheetOpen(false)} />
+          <div className="sheet" role="dialog" aria-label="pick a match">
+            <div className="grab" aria-hidden="true" />
+            <div className="search">
+              <input placeholder="Search teams…" value={filter} onChange={(e) => setFilter(e.target.value)}
+                aria-label="search fixtures" autoFocus />
+            </div>
+            <div className="lists">
+              <GroupedList fixtures={fixtures} sel={sel} onPick={select} filter={filter} />
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
