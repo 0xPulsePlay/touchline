@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type Calibration, type Fixture, type Market, type PathResponse, type Quote, type Side } from "./api.js";
+import { api, type Calibration, type Fixture, type PathResponse, type Side } from "./api.js";
 import { BettingPanel } from "./betting/BettingPanel.js";
 import { flag } from "./flags.js";
 import { groupOf } from "./groups.js";
@@ -14,20 +14,17 @@ const fmtDay = (ts: number) =>
 const pct = (v: number, dp = 1) => `${(v * 100).toFixed(dp)}%`;
 
 /** Single-fixture market/detail view. The fixture is chosen by the route (#/m/<id>) and
- *  passed in as `fixtureId`; everything else — probability path + replay, the live/sim
- *  simulate-live driver, the one-touch market builder, parimutuel cards + proof receipts,
- *  and the calibration panel — is unchanged from the standalone app. */
+ *  passed in as `fixtureId`. It composes the probability-path chart + replay, the live/sim
+ *  simulate-live driver, the one-click <BettingPanel> (which owns quoting, the on-chain bet,
+ *  and the hedge book), and the calibration panel. */
 export function App({ fixtureId }: { fixtureId: number }) {
   const [sel, setSel] = useState<Fixture | null>(null);
   const [pathRes, setPathRes] = useState<PathResponse | null>(null);
   const [side, setSide] = useState<Side>("part1");
   const [barrier, setBarrier] = useState(60);
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [markets, setMarkets] = useState<Market[]>([]);
   const [cal, setCal] = useState<Calibration | null>(null);
   const [cursor, setCursor] = useState(1e9);
   const [playing, setPlaying] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   /** simulated-live driver: virtual clock advanced by the poll loop; null = not simulating */
   const simRef = useRef<{ now: number; speed: number; endTs: number } | null>(null);
@@ -49,8 +46,6 @@ export function App({ fixtureId }: { fixtureId: number }) {
     let dead = false;
     setSel(null);
     setPathRes(null);
-    setMarkets([]);
-    setQuote(null);
     setPlaying(false);
     setCursor(1e9);
     simRef.current = null;
@@ -64,7 +59,6 @@ export function App({ fixtureId }: { fixtureId: number }) {
       setPathRes(r);
       fullEndRef.current = r.path[r.path.length - 1]?.ts ?? r.fixture.startTime;
     }).catch((e) => { if (!dead) setErr(String(e)); });
-    api.markets(fixtureId).then((m) => { if (!dead) setMarkets(m); }).catch(() => {});
     return () => { dead = true; };
   }, [fixtureId]);
 
@@ -144,13 +138,6 @@ export function App({ fixtureId }: { fixtureId: number }) {
   };
 
   useEffect(() => {
-    if (!sel) return;
-    let dead = false;
-    api.quote(sel.fixtureId, side, barrier).then((q) => !dead && setQuote(q)).catch(() => setQuote(null));
-    return () => { dead = true; };
-  }, [sel, side, barrier]);
-
-  useEffect(() => {
     if (!playing || !pathRes) return;
     const total = pathRes.path.length;
     let i = cursor >= total ? 0 : cursor;
@@ -178,31 +165,6 @@ export function App({ fixtureId }: { fixtureId: number }) {
     const scale = buildScale(pathRes.timeline, 0, 1, lastTs);
     return scale ? scale.labelOf : null;
   }, [pathRes]);
-
-  const openMarket = async () => {
-    if (!sel) return;
-    setBusy("create"); setErr(null);
-    try {
-      await api.createMarket(sel.fixtureId, side, barrier);
-      setMarkets(await api.markets(sel.fixtureId));
-    } catch (e) { setErr(String(e)); } finally { setBusy(null); }
-  };
-
-  const doStake = async (m: Market, s: "yes" | "no") => {
-    setBusy(m.id); setErr(null);
-    try {
-      await api.stake(m.id, s, 25);
-      setMarkets(await api.markets(m.fixtureId));
-    } catch (e) { setErr(String(e)); } finally { setBusy(null); }
-  };
-
-  const doResolve = async (m: Market) => {
-    setBusy(m.id); setErr(null);
-    try {
-      await api.resolve(m.id);
-      setMarkets(await api.markets(m.fixtureId));
-    } catch (e) { setErr(String(e)); } finally { setBusy(null); }
-  };
 
   const visibleCursor = pathRes ? Math.min(cursor, pathRes.path.length) : 0;
   const now = Date.now();

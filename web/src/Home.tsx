@@ -84,6 +84,8 @@ export function Home() {
               <span><b>{stats.count || "—"}</b> matches</span>
               <span className="tl-sep" aria-hidden="true" />
               <span><b>{fmtTicks(stats.ticks)}</b> anchored ticks</span>
+              <span className="tl-sep" aria-hidden="true" />
+              <a className="tl-hero-paper" href="#/paper">Read the math →</a>
             </div>
           </header>
 

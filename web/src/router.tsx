@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { App } from "./App.js";
 import { Home } from "./Home.js";
+import { WhitePaper } from "./paper/WhitePaper.js";
 
-/** Minimal hash routing — no library. '#/' = home picker, '#/m/<fixtureId>' = market view. */
-export type Route = { name: "home" } | { name: "market"; fixtureId: number };
+/** Minimal hash routing — no library. '#/' = home picker, '#/m/<fixtureId>' = market view, '#/paper' = white paper. */
+export type Route = { name: "home" } | { name: "market"; fixtureId: number } | { name: "paper" };
 
 export function parseHash(hash: string): Route {
-  const m = hash.replace(/^#/, "").match(/^\/m\/(\d+)/);
+  const path = hash.replace(/^#/, "");
+  if (/^\/paper\/?$/.test(path)) return { name: "paper" };
+  const m = path.match(/^\/m\/(\d+)/);
   return m ? { name: "market", fixtureId: Number(m[1]) } : { name: "home" };
 }
 
@@ -29,7 +32,7 @@ export function navigate(to: string) {
 export function AppRouter() {
   const route = useHashRoute();
   useEffect(() => { window.scrollTo({ top: 0 }); }, [route]);
-  return route.name === "market"
-    ? <App key={route.fixtureId} fixtureId={route.fixtureId} />
-    : <Home />;
+  if (route.name === "market") return <App key={route.fixtureId} fixtureId={route.fixtureId} />;
+  if (route.name === "paper") return <WhitePaper />;
+  return <Home />;
 }

@@ -92,6 +92,9 @@
 .tl-hero-stats .tl-sep { width: 1px; height: 13px; background: var(--line); }
 .tl-hero-live { display: inline-flex; align-items: center; gap: 7px; color: var(--live); }
 .tl-hero-live b { color: var(--live); }
+.tl-hero-paper { color: var(--accent); text-decoration: none; font-weight: 700;
+  border-bottom: 1px solid transparent; padding-bottom: 1px; }
+.tl-hero-paper:hover { border-bottom-color: var(--accent); }
 
 /* ── controls / search ───────────────────────────────────────────────── */
 .tl-controls {
