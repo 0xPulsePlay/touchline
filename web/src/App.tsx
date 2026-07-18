@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Calibration, type Fixture, type Market, type PathResponse, type Quote, type Side } from "./api.js";
+import { BettingPanel } from "./betting/BettingPanel.js";
 import { flag } from "./flags.js";
 import { groupOf } from "./groups.js";
 import { AppBar } from "./AppBar.js";
@@ -369,6 +370,8 @@ export function App({ fixtureId }: { fixtureId: number }) {
                 </details>
               </div>
             </section>
+
+            <BettingPanel fixture={sel} side={side} barrier={barrier} names={names} />
 
             <section className="panel">
               <h2>Markets</h2>

@@ -1,0 +1,50 @@
+.panel.bet { }
+.bet-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bet-head h2 { display: flex; align-items: center; gap: 10px; }
+.devnet { font-family: ui-monospace, Menlo, monospace; font-size: 0.58rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-3); border: 1px solid var(--line); border-radius: 100px;
+  padding: 2px 8px; font-weight: 400; }
+.wallet-line { display: flex; align-items: center; gap: 10px; }
+.wallet-line .bal { font-size: 1.05rem; font-weight: 700; }
+.wallet-line .bal .tick { font-size: 0.7rem; color: var(--ink-3); font-weight: 400; }
+.wallet-line .dim { color: var(--ink-3); }
+
+.quote-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 12px; background: var(--ground); }
+.q-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.q-label { font-size: 1rem; }
+.gate { font-size: 0.72rem; color: var(--accent); font-family: ui-monospace, Menlo, monospace;
+  border: 1px solid var(--accent); border-radius: 100px; padding: 2px 8px; }
+.q-body { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+.q-price, .q-payout { display: flex; flex-direction: column; }
+.q-body .big { font-size: 1.6rem; font-weight: 700; line-height: 1; font-family: Futura, "Century Gothic", sans-serif; }
+.q-payout .big { color: var(--pitch); }
+.q-sub { font-size: 0.68rem; color: var(--ink-3); margin-top: 3px; }
+.q-arrow { color: var(--ink-3); font-size: 1.2rem; }
+.q-decomp { font-size: 0.72rem; color: var(--ink-3); margin-left: auto; }
+
+.bet-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.stakebtn { flex: 1; min-width: 80px; padding: 11px 14px; border: none; border-radius: 10px;
+  background: var(--pitch); color: #fff; font-family: Futura, "Century Gothic", sans-serif; font-weight: 700;
+  font-size: 0.9rem; cursor: pointer; }
+.stakebtn:hover:not(:disabled) { filter: brightness(1.1); }
+.stakebtn:disabled { opacity: 0.4; cursor: default; }
+.btn2.settle { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+.bet-msg { margin-top: 12px; font-size: 0.85rem; padding: 9px 12px; border-radius: 8px; line-height: 1.45; }
+.bet-msg.ok { background: var(--good-bg); color: var(--good); }
+.bet-msg.err { background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit);
+  word-break: break-word; }
+
+.activity { margin-top: 18px; }
+.act-head { font-family: Futura, "Century Gothic", sans-serif; font-size: 0.66rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+.act-list { display: flex; flex-direction: column; gap: 5px; }
+.act-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 7px 12px; border-radius: 8px; font-size: 0.82rem; border: 1px solid var(--line-soft);
+  animation: actin 0.25s ease-out; }
+@keyframes actin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .act-row { animation: none; } }
+.act-row.you { border-color: var(--pitch); background: color-mix(in srgb, var(--pitch) 6%, transparent); }
+.act-who { font-weight: 600; }
+.act-odds { color: var(--ink-3); }
+.dim { color: var(--ink-3); font-style: italic; font-size: 0.85rem; }
