@@ -10,3 +10,6 @@ onchain/target/
 onchain/.anchor/
 !onchain/target/idl/
 !onchain/target/deploy/touchline_market-keypair.json
+
+# local validator ledger
+onchain/test-ledger/
