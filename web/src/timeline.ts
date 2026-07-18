@@ -10,6 +10,8 @@ export interface Segment extends PhaseWindow {
   x0: number;
   x1: number;
   playing: boolean;
+  /** true = not yet reached (live/sim projection) — rendered dimmed, keeps the axis stable */
+  projected?: boolean;
 }
 
 export interface MatchScale {
@@ -42,16 +44,79 @@ const BAND_FRACTION: Record<string, number> = {
 };
 const PRE_WINDOW_MS = 20 * 60_000;
 
-export function buildScale(tl: PhaseTimeline, plotX0: number, plotX1: number, lastTs: number): MatchScale | null {
+/** est. stoppage appended to a nominal half when projecting (seconds) */
+const STOPPAGE_EST_S = 4 * 60;
+const NOMINAL_LEN_S: Record<string, number> = { H1: 45 * 60, H2: 45 * 60, ET1: 15 * 60, ET2: 15 * 60 };
+
+/**
+ * Live/sim projection: extend the KNOWN windows with the expected remainder of the match so the
+ * axis is stable from kickoff — the leading edge fills INTO a fixed layout instead of
+ * re-compressing it every poll. Projections cover only the current regulation/ET block; ET and
+ * pens appear as single axis-extension moments when their transitions actually arrive.
+ */
+function projectWindows(known: PhaseWindow[], asOfTs: number): (PhaseWindow & { projected?: boolean })[] {
+  const out: (PhaseWindow & { projected?: boolean })[] = known.map((w) => ({ ...w }));
+  const last = [...out].reverse().find((w) => w.phase !== "POST");
+  if (!last) return out;
+  const proj: (PhaseWindow & { projected?: boolean })[] = [];
+  const mk = (phase: PhaseWindow["phase"], clockStartS: number | null, lenS: number | null): void => {
+    const startTs = (proj[proj.length - 1] ?? { endTs: last.endTs }).endTs;
+    // wall duration of projected playing phases ≈ clock length; breaks get fixed bands anyway
+    const endTs = startTs + (lenS ?? 15 * 60) * 1000;
+    proj.push({ phase, startTs, endTs, clockStartS, clockEndS: clockStartS != null && lenS != null ? clockStartS + lenS : null, projected: true });
+  };
+  const stillToCome = (p: string) => !out.some((w) => w.phase === p);
+
+  if (PLAYING.has(last.phase)) {
+    // extend the CURRENT phase to its nominal + stoppage estimate (never shrink below observed)
+    const nominalEnd = (NOMINAL_CLOCK_START_LOOKUP[last.phase] ?? 0) + (NOMINAL_LEN_S[last.phase] ?? 45 * 60) + STOPPAGE_EST_S;
+    const observed = last.clockEndS ?? NOMINAL_CLOCK_START_LOOKUP[last.phase] ?? 0;
+    if (observed < nominalEnd) {
+      last.endTs = Math.max(last.endTs, asOfTs + (nominalEnd - observed) * 1000);
+      last.clockEndS = nominalEnd;
+    }
+  }
+  if (last.phase === "PRE") {
+    mk("H1", 0, 45 * 60 + STOPPAGE_EST_S);
+    mk("HT", null, null);
+    mk("H2", 45 * 60, 45 * 60 + STOPPAGE_EST_S);
+  } else if (last.phase === "H1") {
+    if (stillToCome("HT")) mk("HT", null, null);
+    if (stillToCome("H2")) mk("H2", 45 * 60, 45 * 60 + STOPPAGE_EST_S);
+  } else if (last.phase === "HT") {
+    if (stillToCome("H2")) mk("H2", 45 * 60, 45 * 60 + STOPPAGE_EST_S);
+  } else if (last.phase === "ET_WAIT" || last.phase === "ET1") {
+    if (stillToCome("ET1") && last.phase === "ET_WAIT") mk("ET1", 90 * 60, 15 * 60 + 2 * 60);
+    if (stillToCome("ET_HT")) mk("ET_HT", null, null);
+    if (stillToCome("ET2")) mk("ET2", 105 * 60, 15 * 60 + 2 * 60);
+  } else if (last.phase === "ET_HT") {
+    if (stillToCome("ET2")) mk("ET2", 105 * 60, 15 * 60 + 2 * 60);
+  }
+  return [...out, ...proj];
+}
+
+const NOMINAL_CLOCK_START_LOOKUP: Record<string, number> = { H1: 0, H2: 45 * 60, ET1: 90 * 60, ET2: 105 * 60 };
+
+export function buildScale(
+  tl: PhaseTimeline,
+  plotX0: number,
+  plotX1: number,
+  lastTs: number,
+  opts: { project?: boolean } = {},
+): MatchScale | null {
   if (!tl || tl.phases.length === 0) return null;
   const pw = plotX1 - plotX0;
 
   // clamp PRE to a fixed pre-kickoff window; drop zero-length windows
-  const windows = tl.phases
+  let baseWindows: (PhaseWindow & { projected?: boolean })[] = tl.phases
     .map((w) =>
       w.phase === "PRE" ? { ...w, startTs: Math.max(w.startTs, w.endTs - PRE_WINDOW_MS) } : { ...w },
     )
     .filter((w) => w.endTs > w.startTs || w.phase === "POST");
+  if (opts.project) {
+    baseWindows = projectWindows(baseWindows.filter((w) => w.phase !== "POST" || w.endTs > w.startTs), lastTs);
+  }
+  const windows = baseWindows;
   if (windows.length && windows[windows.length - 1]!.phase === "POST") {
     const post = windows[windows.length - 1]!;
     post.endTs = Math.max(post.endTs, lastTs, post.startTs + 1);

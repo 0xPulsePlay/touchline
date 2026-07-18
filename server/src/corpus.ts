@@ -1,28 +1,13 @@
 import Database from "better-sqlite3";
 import { config } from "./config.js";
+import { openingProbe, SIDES, type FixtureRow, type PathTick, type Side } from "./model.js";
+export { openingProbe, SIDES, type FixtureRow, type PathTick, type Side };
 
 /**
  * Read-only access to the txline-explorer engine corpus. The DB is in WAL mode with a standing
  * ingestion worker writing to it — readonly connections are safe alongside it.
  */
 const db = new Database(config.corpusDb, { readonly: true, fileMustExist: true });
-
-export type Side = "part1" | "draw" | "part2";
-export const SIDES: Side[] = ["part1", "draw", "part2"];
-
-export interface FixtureRow {
-  fixtureId: number;
-  startTime: number;
-  competition: string;
-  participant1: string;
-  participant2: string;
-  participant1IsHome: boolean;
-  statusId: number | null;
-  isFinal: boolean;
-  finalP1: number | null;
-  finalP2: number | null;
-  oddsTickCount: number;
-}
 
 const fixturesStmt = db.prepare(`
   SELECT fixture_id, start_time, competition, participant1, participant2,
@@ -50,15 +35,6 @@ export function listFixtures(): FixtureRow[] {
 
 export function getFixture(fixtureId: number): FixtureRow | undefined {
   return listFixtures().find((f) => f.fixtureId === fixtureId);
-}
-
-/** One point of the 1X2 probability path. Pct values are percentages (e.g. 27.594). */
-export interface PathTick {
-  ts: number;
-  messageId: string;
-  part1: number;
-  draw: number;
-  part2: number;
 }
 
 const ticksStmt = db.prepare(`
@@ -104,19 +80,6 @@ export function rawTick(messageId: string): Record<string, unknown> | undefined 
   }
 }
 
-/**
- * Kickoff-anchored opening probability: the last pre-kickoff tick if one exists, else the first
- * tick. (Sequences carry multi-day pre-match tails; StartTime is the anchor, not first-tick ts.)
- */
-export function openingProbe(path: PathTick[], startTime: number): PathTick | undefined {
-  if (!path.length) return undefined;
-  let last: PathTick | undefined;
-  for (const t of path) {
-    if (t.ts <= startTime) last = t;
-    else break;
-  }
-  return last ?? path[0];
-}
 
 /** Minute-bucket rows for the calibration study — cheap SQL over the pre-downsampled series. */
 export interface SeriesRow {

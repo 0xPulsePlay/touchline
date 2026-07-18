@@ -1,18 +1,9 @@
-import Database from "better-sqlite3";
-import { config } from "./config.js";
-
 /**
- * Phase timeline for a fixture, derived from the scores feed: StatusId transitions give the
- * wall-clock windows (H1/HT/H2/ET/pens/suspensions), Clock samples give the real match clock
- * inside playing windows.
- *
- * LIVE SEMANTICS: `asOf` truncates every INPUT (transitions, clock samples, end anchor) before
- * derivation — the result is exactly what a live consumer would have known at that instant. The
- * derivation itself is pure (`windowsFromTransitions`), so when the client SDK's timeline
- * function lands, it swaps into the same seam: truncate inputs → derive.
+ * Pure phase-timeline derivation: StatusId transitions (already truncated to the observation
+ * instant by the caller) → phase windows. No I/O in this module — the SDK-backed adapter
+ * (`platform.ts`) supplies inputs at runtime, and this logic is slated to move into
+ * `@txline/client-sdk` itself once the SDK session lands it.
  */
-
-const db = new Database(config.corpusDb, { readonly: true, fileMustExist: true });
 
 export type PhaseName =
   | "PRE" | "H1" | "HT" | "H2"
@@ -35,8 +26,8 @@ export const PLAYING: ReadonlySet<PhaseName> = new Set(["H1", "H2", "ET1", "ET2"
 
 /** Nominal match-clock start (seconds) per playing phase — anchors when samples are sparse.
  *  (A phase resumed after a SUSP band reuses its nominal start; widths skew slightly in that
- *  rare case, which is acceptable — the clock samples still place ticks correctly.) */
-const NOMINAL_CLOCK_START: Partial<Record<PhaseName, number>> = {
+ *  rare case, which is acceptable — the clock anchors still place ticks correctly.) */
+export const NOMINAL_CLOCK_START: Partial<Record<PhaseName, number>> = {
   H1: 0, H2: 45 * 60, ET1: 90 * 60, ET2: 105 * 60,
 };
 
@@ -107,67 +98,4 @@ export function windowsFromTransitions(
     phases.push({ phase: "POST", startTs: last.endTs, endTs: Math.max(pathEndTs, last.endTs), clockStartS: null, clockEndS: null });
   }
   return phases;
-}
-
-const statusStmt = db.prepare(`
-  SELECT ts, status_id AS statusId FROM score_updates
-  WHERE fixture_id = ? AND action = 'status' AND status_id IS NOT NULL AND ts <= ?
-  ORDER BY seq ASC
-`);
-
-const rawStmt = db.prepare(`
-  SELECT ts, raw FROM score_updates
-  WHERE fixture_id = ? AND ts >= ? AND ts <= ?
-  ORDER BY ts ASC
-`);
-
-function clockSamples(fixtureId: number, fromTs: number, toTs: number, thinMs = 20_000): ClockSample[] {
-  const rows = rawStmt.all(fixtureId, fromTs, toTs) as { ts: number; raw: string }[];
-  const out: ClockSample[] = [];
-  let lastKept = -Infinity;
-  for (const r of rows) {
-    if (r.ts - lastKept < thinMs) continue;
-    try {
-      const u = JSON.parse(r.raw) as { Clock?: { Running?: boolean; Seconds?: number } };
-      const c = u.Clock;
-      if (c && typeof c.Seconds === "number" && c.Running) {
-        out.push({ ts: r.ts, s: c.Seconds });
-        lastKept = r.ts;
-      }
-    } catch {
-      /* skip */
-    }
-  }
-  return out;
-}
-
-/**
- * Timeline as known at `asOf` (default: now/complete). All inputs are truncated to asOf before
- * the pure derivation — a live consumer at that instant could not know more.
- */
-export function phaseTimeline(
-  fixtureId: number,
-  pathEndTs: number,
-  opts: { asOf?: number; startTimeHint?: number } = {},
-): PhaseTimeline {
-  const asOf = opts.asOf ?? Number.MAX_SAFE_INTEGER;
-  const endAnchor = Math.min(pathEndTs, asOf);
-  const transitions = statusStmt.all(fixtureId, asOf) as StatusTransition[];
-  const phases = windowsFromTransitions(transitions, endAnchor, opts.startTimeHint);
-
-  const clock: ClockSample[] = [];
-  for (const w of phases) {
-    if (!PLAYING.has(w.phase)) continue;
-    const samples = clockSamples(fixtureId, w.startTs, Math.min(w.endTs, asOf));
-    if (samples.length) {
-      w.clockEndS = samples[samples.length - 1]!.s;
-      if (w.clockStartS == null) w.clockStartS = samples[0]!.s;
-      clock.push(...samples);
-    } else {
-      const nominal = NOMINAL_CLOCK_START[w.phase] ?? 0;
-      w.clockStartS = nominal;
-      w.clockEndS = nominal + Math.round((Math.min(w.endTs, asOf) - w.startTs) / 1000);
-    }
-  }
-  return { phases, clock };
 }

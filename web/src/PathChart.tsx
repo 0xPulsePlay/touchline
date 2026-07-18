@@ -12,15 +12,20 @@ export interface PathChartProps {
   side: Side;
   barrier: number;
   cursor: number;
+  /** live/sim: stable projected axis + draw only up to this wall-ts (smooth reveal) */
+  live?: { revealTs: number };
 }
 
 const W = 860, H = 310, M = { t: 18, r: 96, b: 30, l: 40 };
 
-export function PathChart({ path, startTime, timeline, names, side, barrier, cursor }: PathChartProps) {
+export function PathChart({ path, startTime, timeline, names, side, barrier, cursor, live }: PathChartProps) {
   const pw = W - M.l - M.r, ph = H - M.t - M.b;
   const lastTs = path[path.length - 1]?.ts ?? startTime;
 
-  const scale = useMemo(() => buildScale(timeline, M.l, M.l + pw, lastTs), [timeline, lastTs, pw]);
+  const scale = useMemo(
+    () => buildScale(timeline, M.l, M.l + pw, lastTs, { project: !!live }),
+    [timeline, lastTs, pw, live ? 1 : 0],
+  );
 
   // wall-clock fallback when a fixture has no scores coverage
   const x0 = path.find((p) => p.ts >= startTime - 20 * 60000)?.ts ?? path[0]?.ts ?? 0;
@@ -30,7 +35,9 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
   const Y = (v: number) => M.t + (1 - v / 100) * ph;
 
   const drawFrom = scale ? (scale.segments[0]?.startTs ?? x0) : x0;
-  const visible = path.filter((p) => p.ts >= drawFrom).slice(0, Math.max(2, cursor));
+  const visible = live
+    ? path.filter((p) => p.ts >= drawFrom && p.ts <= live.revealTs)
+    : path.filter((p) => p.ts >= drawFrom).slice(0, Math.max(2, cursor));
   const line = (key: Side) =>
     visible.map((p, i) => `${i ? "L" : "M"}${X(p.ts).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join(" ");
 
@@ -40,6 +47,19 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="probability path replay">
+      {/* projected (not-yet-reached) territory: faint tint so the axis shape reads from kickoff */}
+      {scale?.segments
+        .filter((s) => s.projected)
+        .map((s) => (
+          <rect key={`proj-${s.phase}-${s.startTs}`} x={s.x0} y={M.t} width={s.x1 - s.x0} height={ph}
+            fill="var(--fog)" opacity={0.35} />
+        ))}
+      {/* the reveal edge ("now" line) in live/sim */}
+      {live && visible.length > 1 && (
+        <line x1={X(visible[visible.length - 1]!.ts)} x2={X(visible[visible.length - 1]!.ts)}
+          y1={M.t} y2={M.t + ph} stroke="var(--live)" strokeWidth={1.5} opacity={0.8} />
+      )}
+
       {/* compressed break bands, drawn first */}
       {scale?.segments
         .filter((s) => !s.playing)

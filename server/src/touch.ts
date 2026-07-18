@@ -1,4 +1,4 @@
-import type { PathTick, Side } from "./corpus.js";
+import type { PathTick, Side } from "./model.js";
 
 export interface TouchHit {
   ts: number;

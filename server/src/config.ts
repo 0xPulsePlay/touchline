@@ -29,6 +29,9 @@ export const config = {
 
   txlineApiBase: process.env.TXLINE_API_BASE ?? "https://txline.txodds.com",
 
+  /** The TxLINE data platform (txline-explorer engine) — all product-path reads go through it. */
+  platformUrl: process.env.TXLINE_PLATFORM_URL ?? "http://localhost:3001",
+
   /** Mainnet RPC for verifying odds proofs against the daily_batch_roots PDA (read-only). */
   rpcUrl: process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
 

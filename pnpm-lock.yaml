@@ -23,6 +23,9 @@ importers:
       '@solana/web3.js':
         specifier: ^1.95.0
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@txline/client-sdk':
+        specifier: file:../../txline-explorer/packages/client-sdk
+        version: file:../txline-explorer/packages/client-sdk
       '@txline/verify':
         specifier: file:../../txline-explorer-validation-lab/packages/verify
         version: file:../txline-explorer-validation-lab/packages/verify(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
@@ -817,6 +820,9 @@ packages:
 
   '@swc/helpers@0.5.23':
     resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
+
+  '@txline/client-sdk@file:../txline-explorer/packages/client-sdk':
+    resolution: {directory: ../txline-explorer/packages/client-sdk, type: directory}
 
   '@txline/verify@file:../txline-explorer-validation-lab/packages/verify':
     resolution: {directory: ../txline-explorer-validation-lab/packages/verify, type: directory}
@@ -2285,6 +2291,8 @@ snapshots:
   '@swc/helpers@0.5.23':
     dependencies:
       tslib: 2.8.1
+
+  '@txline/client-sdk@file:../txline-explorer/packages/client-sdk': {}
 
   '@txline/verify@file:../txline-explorer-validation-lab/packages/verify(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:

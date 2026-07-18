@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.js";
 import { parimutuelPayoutPerUnit } from "./pricing.js";
-import type { Side } from "./corpus.js";
+import type { Side } from "./model.js";
 
 export type MarketKind = "one_touch";
 export type MarketStatus = "open" | "resolved_yes" | "resolved_no";

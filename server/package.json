@@ -13,6 +13,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@solana/web3.js": "^1.95.0",
+    "@txline/client-sdk": "file:../../txline-explorer/packages/client-sdk",
     "@txline/verify": "file:../../txline-explorer-validation-lab/packages/verify",
     "better-sqlite3": "^11.5.0",
     "fastify": "^5.0.0"

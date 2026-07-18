@@ -87,6 +87,9 @@ export function App() {
   const [simUi, setSimUi] = useState<{ speed: number } | null>(null);
   /** last tick of the FULL (untruncated) path — sims always span the real match, never a truncated view */
   const fullEndRef = useRef<number | null>(null);
+  /** smooth-reveal cursor for live/sim: tweens toward each poll's leading edge */
+  const [revealTs, setRevealTs] = useState<number | null>(null);
+  const revealAnim = useRef(0);
   const raf = useRef(0);
 
   useEffect(() => {
@@ -139,6 +142,23 @@ export function App() {
         if (dead) return;
         setPathRes(r);
         setCursor(1e9); // follow the leading edge
+        // tween the reveal cursor to the new edge — continuous fast-forward, not a jump
+        const target = r.path[r.path.length - 1]?.ts;
+        if (target !== undefined) {
+          cancelAnimationFrame(revealAnim.current);
+          setRevealTs((prev) => {
+            const from = prev ?? target;
+            if (from >= target) return target;
+            const t0 = performance.now(), dur = 1850;
+            const stepR = (now: number) => {
+              const f = Math.min(1, (now - t0) / dur);
+              setRevealTs(from + f * (target - from));
+              if (f < 1 && !dead) revealAnim.current = requestAnimationFrame(stepR);
+            };
+            revealAnim.current = requestAnimationFrame(stepR);
+            return from;
+          });
+        }
         if (sim && sim.now >= sim.endTs) {
           simRef.current = null;
           setSimUi(null);
@@ -152,18 +172,20 @@ export function App() {
     };
     void tick();
     const id = setInterval(tick, 2000);
-    return () => { dead = true; clearInterval(id); };
+    return () => { dead = true; clearInterval(id); cancelAnimationFrame(revealAnim.current); };
   }, [sel, isLive, simActive]);
 
   const startSim = () => {
     if (!sel || fullEndRef.current == null) return;
     simRef.current = { now: sel.startTime - 10 * 60_000, speed: 180, endTs: fullEndRef.current + 2 * 60_000 };
     setSimUi({ speed: 180 });
+    setRevealTs(sel.startTime - 10 * 60_000);
     setPlaying(false);
   };
   const exitSim = () => {
     simRef.current = null;
     setSimUi(null);
+    setRevealTs(null);
     if (sel) api.path(sel.fixtureId).then((r) => {
       setPathRes(r);
       fullEndRef.current = r.path[r.path.length - 1]?.ts ?? null;
@@ -244,8 +266,14 @@ export function App() {
   const now = Date.now();
   const selGroup = simUi ? "live" : sel ? groupOf(sel, now) : "finished";
   const liveEdgeLabel = (() => {
-    const p = pathRes?.path[pathRes.path.length - 1];
-    return p && clockLabel ? clockLabel(p.ts) : "";
+    if (!sel) return "";
+    const edge = revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts;
+    if (edge === undefined || !clockLabel) return "";
+    const l = clockLabel(edge);
+    if (l === "pre-match" && edge < sel.startTime) {
+      return `KO −${Math.max(0, Math.ceil((sel.startTime - edge) / 60000))}′`;
+    }
+    return l;
   })();
 
   return (
@@ -313,6 +341,7 @@ export function App() {
                       side={side}
                       barrier={barrier}
                       cursor={simUi || isLive ? 1e9 : visibleCursor}
+                      live={simUi || isLive ? { revealTs: revealTs ?? (pathRes.path[pathRes.path.length - 1]?.ts ?? sel.startTime) } : undefined}
                     />
                     {simUi || isLive ? (
                       <div className="livebar">

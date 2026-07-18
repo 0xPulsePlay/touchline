@@ -1,13 +1,13 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { config } from "./config.js";
-import { listFixtures, getFixture, fullPath, openingProbe, type Side, SIDES } from "./corpus.js";
+import { getFixture, listFixtures, openingProbe, pathFor, timelineFor } from "./platform.js";
+import { SIDES, type Side } from "./model.js";
 import { quoteTouch, touchBound } from "./pricing.js";
 import { firstTouch, maxPct } from "./touch.js";
 import { createMarket, getMarket, listMarkets, poolImpliedYes, poolTotals, resolveMarket, stake } from "./markets.js";
 import { receiptForTick } from "./proofs.js";
 import { loadOrComputeCalibration, pricingDiscount } from "./calibration.js";
-import { phaseTimeline } from "./phases.js";
 
 const app = Fastify({ logger: { level: "info" } });
 await app.register(cors, { origin: true, methods: ["GET", "POST"] });
@@ -31,16 +31,15 @@ app.get("/api/fixtures", async () => listFixtures());
 app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string } }>(
   "/api/fixtures/:id/path",
   async (req, reply) => {
-    const f = getFixture(Number(req.params.id));
+    const f = await getFixture(Number(req.params.id));
     if (!f) return reply.code(404).send({ error: "unknown fixture" });
     const asOf = req.query.asOf ? Number(req.query.asOf) : undefined;
-    const full = fullPath(f.fixtureId);
-    const path = asOf === undefined ? full : full.filter((t) => t.ts <= asOf);
+    const path = await pathFor(f.fixtureId, asOf);
     const every = Math.max(1, Number(req.query.every ?? 5));
     const thin = path.filter((_, i) => i % every === 0 || i === path.length - 1);
     const open = openingProbe(path, f.startTime);
     const lastTs = path.length ? path[path.length - 1]!.ts : f.startTime;
-    const timeline = phaseTimeline(f.fixtureId, lastTs, { asOf, startTimeHint: f.startTime });
+    const timeline = await timelineFor(f.fixtureId, lastTs, { asOf, startTimeHint: f.startTime });
     return {
       fixture: f,
       opening: open,
@@ -56,13 +55,13 @@ app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string }
 app.get<{ Params: { id: string }; Querystring: { side: string; barrier: string } }>(
   "/api/fixtures/:id/quote",
   async (req, reply) => {
-    const f = getFixture(Number(req.params.id));
+    const f = await getFixture(Number(req.params.id));
     if (!f) return reply.code(404).send({ error: "unknown fixture" });
     const side = asSide(req.query.side);
     if (!side) return reply.code(400).send({ error: "side must be part1|draw|part2" });
     const barrier = Number(req.query.barrier);
     if (!(barrier > 0 && barrier < 100)) return reply.code(400).send({ error: "barrier in (0,100)" });
-    const path = fullPath(f.fixtureId);
+    const path = await pathFor(f.fixtureId);
     const open = openingProbe(path, f.startTime);
     if (!open) return reply.code(409).send({ error: "no odds path for fixture" });
     const p0 = open[side] / 100;
@@ -88,9 +87,9 @@ app.post<{ Body: { fixtureId: number; side: string; barrier: number } }>("/api/m
   const { fixtureId, barrier } = req.body;
   const side = asSide(req.body.side);
   if (!side) return reply.code(400).send({ error: "side must be part1|draw|part2" });
-  const f = getFixture(Number(fixtureId));
+  const f = await getFixture(Number(fixtureId));
   if (!f) return reply.code(404).send({ error: "unknown fixture" });
-  const path = fullPath(f.fixtureId);
+  const path = await pathFor(f.fixtureId);
   const open = openingProbe(path, f.startTime);
   if (!open) return reply.code(409).send({ error: "no odds path" });
   const p0 = open[side] / 100;
@@ -127,9 +126,9 @@ app.post<{ Params: { id: string } }>("/api/markets/:id/resolve", async (req, rep
   const m = getMarket(req.params.id);
   if (!m) return reply.code(404).send({ error: "unknown market" });
   if (m.status !== "open") return reply.code(409).send({ error: `already ${m.status}` });
-  const f = getFixture(m.fixtureId);
+  const f = await getFixture(m.fixtureId);
   if (!f) return reply.code(404).send({ error: "unknown fixture" });
-  const path = fullPath(m.fixtureId);
+  const path = await pathFor(m.fixtureId);
   const hit = firstTouch(path, m.side, m.barrierPct, f.startTime);
   if (hit) {
     const receipt = await receiptForTick(hit.messageId, hit.ts);
