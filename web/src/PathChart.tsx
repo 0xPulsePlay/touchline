@@ -48,7 +48,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
             <rect x={s.x0} y={M.t} width={s.x1 - s.x0} height={ph} fill="var(--fog)" />
             {(() => {
               // short display names; waits/mini-breaks stay unlabeled unless genuinely wide
-              const label = ({ HT: "HT", ET_WAIT: "ET", ET_HT: "", PENS_WAIT: "", PENS: "PENS" } as
+              const label = ({ HT: "HT", ET_WAIT: "ET", ET_HT: "", PENS_WAIT: "", PENS: "PENS", SUSP: "SUSP" } as
                 Record<string, string>)[s.phase] ?? "";
               return label && s.x1 - s.x0 > 24 ? (
                 <text x={(s.x0 + s.x1) / 2} y={M.t + 12} textAnchor="middle"

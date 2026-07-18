@@ -21,7 +21,7 @@ export interface PathPoint {
 export type PhaseName =
   | "PRE" | "H1" | "HT" | "H2"
   | "ET_WAIT" | "ET1" | "ET_HT" | "ET2"
-  | "PENS_WAIT" | "PENS" | "POST";
+  | "PENS_WAIT" | "PENS" | "SUSP" | "POST";
 
 export interface PhaseWindow {
   phase: PhaseName;
@@ -40,6 +40,7 @@ export interface PathResponse {
   fixture: Fixture;
   opening: PathPoint | null;
   tickCount: number;
+  asOf: number | null;
   timeline: PhaseTimeline;
   path: PathPoint[];
 }
@@ -119,7 +120,9 @@ async function j<T>(r: Response): Promise<T> {
 
 export const api = {
   fixtures: () => fetch("/api/fixtures").then((r) => j<Fixture[]>(r)),
-  path: (id: number, every = 4) => fetch(`/api/fixtures/${id}/path?every=${every}`).then((r) => j<PathResponse>(r)),
+  path: (id: number, opts: { every?: number; asOf?: number } = {}) =>
+    fetch(`/api/fixtures/${id}/path?every=${opts.every ?? 4}${opts.asOf ? `&asOf=${opts.asOf}` : ""}`)
+      .then((r) => j<PathResponse>(r)),
   quote: (id: number, side: Side, barrier: number) =>
     fetch(`/api/fixtures/${id}/quote?side=${side}&barrier=${barrier}`).then((r) => j<Quote>(r)),
   markets: (fixtureId: number) => fetch(`/api/markets?fixtureId=${fixtureId}`).then((r) => j<Market[]>(r)),

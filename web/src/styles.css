@@ -263,3 +263,16 @@ details.receipt[open] summary::after { content: " · hide"; }
 
 .empty { color: var(--ink-3); font-style: italic; padding: 26px 0; text-align: center; }
 .err { color: var(--crit); font-size: 0.8rem; margin-top: 8px; }
+
+/* ── live / sim bar ─────────────────────────────────── */
+.panelhead { display: flex; align-items: baseline; gap: 12px; }
+.panelhead h2 { flex: 1; }
+.simbtn { border: 1px solid var(--line); background: none; border-radius: 999px;
+  padding: 5px 12px; font-size: 0.72rem; font-weight: 700; cursor: pointer; color: var(--ink-2); }
+.simbtn:hover { border-color: var(--accent); color: var(--accent); }
+.livebar { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.livebar .livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--live);
+  animation: pulse 1.6s infinite; flex-shrink: 0; }
+.livebar .livelabel { font-size: 0.8rem; font-weight: 700; color: var(--live); flex: 1; }
+.livebar .speeds { display: flex; gap: 6px; }
+.livebar .btn2.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }

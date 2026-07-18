@@ -82,6 +82,11 @@ export function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [wallet, setWallet] = useState<string | null>(rememberedWallet());
+  /** simulated-live driver: virtual clock advanced by the poll loop; null = not simulating */
+  const simRef = useRef<{ now: number; speed: number; endTs: number } | null>(null);
+  const [simUi, setSimUi] = useState<{ speed: number } | null>(null);
+  /** last tick of the FULL (untruncated) path — sims always span the real match, never a truncated view */
+  const fullEndRef = useRef<number | null>(null);
   const raf = useRef(0);
 
   useEffect(() => {
@@ -103,9 +108,71 @@ export function App() {
     setMarkets([]);
     setPlaying(false);
     setCursor(1e9);
-    api.path(f.fixtureId).then(setPathRes).catch((e) => setErr(String(e)));
+    simRef.current = null;
+    setSimUi(null);
+    fullEndRef.current = null;
+    api.path(f.fixtureId).then((r) => {
+      setPathRes(r);
+      fullEndRef.current = r.path[r.path.length - 1]?.ts ?? f.startTime;
+    }).catch((e) => setErr(String(e)));
     api.markets(f.fixtureId).then(setMarkets).catch(() => {});
   }, []);
+
+  const isLive = sel ? groupOf(sel, Date.now()) === "live" : false;
+  const simActive = !!simUi;
+
+  /** live + simulated-live share one poll loop against the same asOf-truncating endpoint.
+   *  Keyed on booleans (not the simUi object) so speed changes don't churn the interval. */
+  useEffect(() => {
+    if (!sel || (!isLive && !simActive)) return;
+    const fid = sel.fixtureId;
+    let dead = false;
+    const tick = async () => {
+      let asOf: number | undefined;
+      const sim = simRef.current;
+      if (sim) {
+        sim.now = Math.min(sim.now + sim.speed * 2000, sim.endTs);
+        asOf = sim.now;
+      }
+      try {
+        const r = await api.path(fid, { asOf });
+        if (dead) return;
+        setPathRes(r);
+        setCursor(1e9); // follow the leading edge
+        if (sim && sim.now >= sim.endTs) {
+          simRef.current = null;
+          setSimUi(null);
+          const full = await api.path(fid);
+          if (!dead) {
+            setPathRes(full);
+            fullEndRef.current = full.path[full.path.length - 1]?.ts ?? null;
+          }
+        }
+      } catch { /* transient poll failure — next tick retries */ }
+    };
+    void tick();
+    const id = setInterval(tick, 2000);
+    return () => { dead = true; clearInterval(id); };
+  }, [sel, isLive, simActive]);
+
+  const startSim = () => {
+    if (!sel || fullEndRef.current == null) return;
+    simRef.current = { now: sel.startTime - 10 * 60_000, speed: 180, endTs: fullEndRef.current + 2 * 60_000 };
+    setSimUi({ speed: 180 });
+    setPlaying(false);
+  };
+  const exitSim = () => {
+    simRef.current = null;
+    setSimUi(null);
+    if (sel) api.path(sel.fixtureId).then((r) => {
+      setPathRes(r);
+      fullEndRef.current = r.path[r.path.length - 1]?.ts ?? null;
+    }).catch(() => {});
+  };
+  const setSimSpeed = (speed: number) => {
+    if (simRef.current) simRef.current.speed = speed;
+    setSimUi({ speed });
+  };
 
   useEffect(() => {
     if (!sel) return;
@@ -175,7 +242,11 @@ export function App() {
 
   const visibleCursor = pathRes ? Math.min(cursor, pathRes.path.length) : 0;
   const now = Date.now();
-  const selGroup = sel ? groupOf(sel, now) : "finished";
+  const selGroup = simUi ? "live" : sel ? groupOf(sel, now) : "finished";
+  const liveEdgeLabel = (() => {
+    const p = pathRes?.path[pathRes.path.length - 1];
+    return p && clockLabel ? clockLabel(p.ts) : "";
+  })();
 
   return (
     <>
@@ -224,7 +295,14 @@ export function App() {
               </div>
 
               <section className="panel">
-                <h2>Probability path</h2>
+                <div className="panelhead">
+                  <h2>Probability path</h2>
+                  {sel.isFinal && !simUi && (
+                    <button className="simbtn" onClick={startSim} title="replay this match through the live pipeline">
+                      ⚡ Simulate live
+                    </button>
+                  )}
+                </div>
                 {pathRes ? (
                   <>
                     <PathChart
@@ -234,26 +312,44 @@ export function App() {
                       names={names}
                       side={side}
                       barrier={barrier}
-                      cursor={visibleCursor}
+                      cursor={simUi || isLive ? 1e9 : visibleCursor}
                     />
-                    <div className="replaybar">
-                      <button className="playbtn" aria-label={playing ? "pause replay" : "replay match"}
-                        onClick={() => {
-                          if (!playing && visibleCursor >= pathRes.path.length) setCursor(0);
-                          setPlaying(!playing);
-                        }}>
-                        {playing ? "❚❚" : "▶"}
-                      </button>
-                      <input type="range" min={2} max={pathRes.path.length} value={visibleCursor}
-                        onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }}
-                        aria-label="scrub replay" />
-                      <span className="clock mono">
-                        {(() => {
-                          const p = pathRes.path[Math.max(0, visibleCursor - 1)];
-                          return p && clockLabel ? clockLabel(p.ts) : "";
-                        })()}
-                      </span>
-                    </div>
+                    {simUi || isLive ? (
+                      <div className="livebar">
+                        <span className="livedot" aria-hidden="true" />
+                        <span className="mono livelabel">{simUi ? "SIM · " : "LIVE · "}{liveEdgeLabel}</span>
+                        {simUi && (
+                          <>
+                            <span className="speeds">
+                              {[60, 180, 600].map((s) => (
+                                <button key={s} className={`btn2${simUi.speed === s ? " on" : ""}`}
+                                  onClick={() => setSimSpeed(s)}>{s}×</button>
+                              ))}
+                            </span>
+                            <button className="btn2" onClick={exitSim}>Exit sim</button>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="replaybar">
+                        <button className="playbtn" aria-label={playing ? "pause replay" : "replay match"}
+                          onClick={() => {
+                            if (!playing && visibleCursor >= pathRes.path.length) setCursor(0);
+                            setPlaying(!playing);
+                          }}>
+                          {playing ? "❚❚" : "▶"}
+                        </button>
+                        <input type="range" min={2} max={pathRes.path.length} value={visibleCursor}
+                          onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }}
+                          aria-label="scrub replay" />
+                        <span className="clock mono">
+                          {(() => {
+                            const p = pathRes.path[Math.max(0, visibleCursor - 1)];
+                            return p && clockLabel ? clockLabel(p.ts) : "";
+                          })()}
+                        </span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="empty">Loading path…</div>

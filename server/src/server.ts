@@ -23,22 +23,29 @@ app.get("/health", async () => ({ ok: true, corpus: config.corpusDb, discount })
 
 app.get("/api/fixtures", async () => listFixtures());
 
-/** Downsampled path for charts + full-precision opening probe. `every` thins ticks for the wire. */
-app.get<{ Params: { id: string }; Querystring: { every?: string } }>(
+/**
+ * Downsampled path for charts + full-precision opening probe. `every` thins ticks for the wire.
+ * `asOf` truncates EVERYTHING (ticks, transitions, clock) to that instant — live and simulated
+ * consumers see exactly what was knowable then; the server does not leak the future.
+ */
+app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string } }>(
   "/api/fixtures/:id/path",
   async (req, reply) => {
     const f = getFixture(Number(req.params.id));
     if (!f) return reply.code(404).send({ error: "unknown fixture" });
-    const path = fullPath(f.fixtureId);
+    const asOf = req.query.asOf ? Number(req.query.asOf) : undefined;
+    const full = fullPath(f.fixtureId);
+    const path = asOf === undefined ? full : full.filter((t) => t.ts <= asOf);
     const every = Math.max(1, Number(req.query.every ?? 5));
     const thin = path.filter((_, i) => i % every === 0 || i === path.length - 1);
     const open = openingProbe(path, f.startTime);
     const lastTs = path.length ? path[path.length - 1]!.ts : f.startTime;
-    const timeline = phaseTimeline(f.fixtureId, lastTs);
+    const timeline = phaseTimeline(f.fixtureId, lastTs, { asOf, startTimeHint: f.startTime });
     return {
       fixture: f,
       opening: open,
       tickCount: path.length,
+      asOf: asOf ?? null,
       timeline,
       path: thin.map((t) => ({ ts: t.ts, part1: t.part1, draw: t.draw, part2: t.part2 })),
     };

@@ -38,7 +38,7 @@ export function footballMinute(phase: string, clockS: number): string {
 }
 /** compressed band widths as fractions of plot width */
 const BAND_FRACTION: Record<string, number> = {
-  PRE: 0.05, HT: 0.05, ET_WAIT: 0.022, ET_HT: 0.022, PENS_WAIT: 0.022, PENS: 0.06, POST: 0.022,
+  PRE: 0.05, HT: 0.05, ET_WAIT: 0.022, ET_HT: 0.022, PENS_WAIT: 0.022, PENS: 0.06, SUSP: 0.03, POST: 0.022,
 };
 const PRE_WINDOW_MS = 20 * 60_000;
 
@@ -105,7 +105,9 @@ export function buildScale(tl: PhaseTimeline, plotX0: number, plotX1: number, la
 
   const segFor = (ts: number): Segment => {
     if (ts <= segments[0]!.startTs) return segments[0]!;
-    for (const s of segments) if (ts >= s.startTs && ts < s.endTs) return s;
+    // inclusive end-bound: the live leading-edge tick (ts == activePhase.endTs) must resolve to
+    // the active phase, not the zero-width trailing POST that starts at the same instant
+    for (const s of segments) if (ts >= s.startTs && ts <= s.endTs && s.endTs > s.startTs) return s;
     return segments[segments.length - 1]!;
   };
 
@@ -123,7 +125,10 @@ export function buildScale(tl: PhaseTimeline, plotX0: number, plotX1: number, la
   const labelOf = (ts: number): string => {
     const s = segFor(ts);
     if (s.playing) return `${footballMinute(s.phase, clockAt(s, ts))} ${s.phase}`;
-    return s.phase === "PRE" ? "pre-match" : s.phase === "POST" ? "full time" : s.phase.replace("_", " ");
+    if (s.phase === "PRE") return "pre-match";
+    if (s.phase === "POST") return "full time";
+    if (s.phase === "SUSP") return "suspended";
+    return s.phase.replace("_", " ");
   };
 
   const minuteTicks: { x: number; label: string }[] = [];
