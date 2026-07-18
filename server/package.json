@@ -1,0 +1,27 @@
+{
+  "name": "@touchline/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "calibrate": "tsx src/scripts/calibrate.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.0",
+    "@solana/web3.js": "^1.95.0",
+    "@txline/verify": "file:../../txline-explorer-validation-lab/packages/verify",
+    "better-sqlite3": "^11.5.0",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}
