@@ -1,0 +1,923 @@
+{
+  "address": "6kZYYdZLJcsU2ZBKKthc7BpddUiYdTbAtGigS2bJc53K",
+  "metadata": {
+    "name": "touchline_market",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Fixed-odds dealer market on TxLINE de-margined win probabilities (devnet, mock SPL)"
+  },
+  "instructions": [
+    {
+      "name": "claim",
+      "docs": [
+        "Claim a winning bet's full escrow. YES → the user claims payout; NO → the house claims it.",
+        "The `winner` token account must belong to the side that won."
+      ],
+      "discriminator": [
+        62,
+        198,
+        214,
+        193,
+        213,
+        159,
+        108,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "claimant",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": [
+            "bet"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bet",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "bet.user",
+                "account": "Bet"
+              },
+              {
+                "kind": "account",
+                "path": "bet.nonce",
+                "account": "Bet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "winner_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_market",
+      "docs": [
+        "Open a barrier market. `side`: 0=part1, 1=draw, 2=part2. `barrier_bps`: e.g. 6000 = 60%.",
+        "The house authority owns the market and provides liability liquidity per bet."
+      ],
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "house",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "fixture_id",
+          "type": "i64"
+        },
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "barrier_bps",
+          "type": "u16"
+        },
+        {
+          "name": "cutoff_ts",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "init_config",
+      "docs": [
+        "One-time global config: admin, the resolver/house authority, and the per-bet stake cap."
+      ],
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "resolver",
+          "type": "pubkey"
+        },
+        {
+          "name": "bet_cap",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "place_bet",
+      "docs": [
+        "Place a fixed-odds bet against the house. Requires BOTH the user and the house authority to",
+        "sign — the house co-signs so the quoted `price_bps` and the per-bet cap are gated by the",
+        "dealer, never chosen unilaterally by the user (prevents stale/favourable-price abuse).",
+        "Fully collateralized: user stake S in, house liability (payout − S) in, vault holds payout."
+      ],
+      "discriminator": [
+        222,
+        62,
+        67,
+        220,
+        63,
+        166,
+        126,
+        33
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "house",
+          "docs": [
+            "The dealer co-signs every bet — this gates price and cap."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_token",
+          "writable": true
+        },
+        {
+          "name": "house_token",
+          "writable": true
+        },
+        {
+          "name": "bet",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "price_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "resolve",
+      "docs": [
+        "Resolve the market (resolver authority only). `outcome`: true = YES (barrier touched).",
+        "Records the settlement evidence on-chain for public re-verification. For YES, the evidence",
+        "is the anchored odds tick that crossed the barrier; for NO, the fixture-final attestation."
+      ],
+      "discriminator": [
+        246,
+        150,
+        236,
+        206,
+        108,
+        63,
+        58,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "resolver",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "bool"
+        },
+        {
+          "name": "ev",
+          "type": {
+            "defined": {
+              "name": "Evidence"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_resolver",
+      "discriminator": [
+        137,
+        108,
+        27,
+        51,
+        202,
+        16,
+        33,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "resolver",
+          "type": "pubkey"
+        },
+        {
+          "name": "bet_cap",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Bet",
+      "discriminator": [
+        147,
+        23,
+        35,
+        59,
+        15,
+        75,
+        155,
+        32
+      ]
+    },
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BetPlaced",
+      "discriminator": [
+        88,
+        88,
+        145,
+        226,
+        126,
+        206,
+        32,
+        0
+      ]
+    },
+    {
+      "name": "Claimed",
+      "discriminator": [
+        217,
+        192,
+        123,
+        72,
+        108,
+        150,
+        248,
+        33
+      ]
+    },
+    {
+      "name": "Resolved",
+      "discriminator": [
+        148,
+        46,
+        187,
+        66,
+        35,
+        1,
+        255,
+        147
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadSide",
+      "msg": "side must be 0,1,2"
+    },
+    {
+      "code": 6001,
+      "name": "BadBarrier",
+      "msg": "barrier bps must be in (0,10000)"
+    },
+    {
+      "code": 6002,
+      "name": "NotOpen",
+      "msg": "market not open"
+    },
+    {
+      "code": 6003,
+      "name": "Closed",
+      "msg": "betting closed"
+    },
+    {
+      "code": 6004,
+      "name": "ZeroAmount",
+      "msg": "amount must be > 0"
+    },
+    {
+      "code": 6005,
+      "name": "OverCap",
+      "msg": "amount over per-bet cap"
+    },
+    {
+      "code": 6006,
+      "name": "BadPrice",
+      "msg": "price bps must be in (0,10000]"
+    },
+    {
+      "code": 6007,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6008,
+      "name": "NotHouse",
+      "msg": "signer is not the market house"
+    },
+    {
+      "code": 6009,
+      "name": "AlreadyResolved",
+      "msg": "market already resolved"
+    },
+    {
+      "code": 6010,
+      "name": "NotResolved",
+      "msg": "market not resolved"
+    },
+    {
+      "code": 6011,
+      "name": "NotResolver",
+      "msg": "signer is not the resolver"
+    },
+    {
+      "code": 6012,
+      "name": "AlreadyClaimed",
+      "msg": "bet already claimed"
+    },
+    {
+      "code": 6013,
+      "name": "NotWinner",
+      "msg": "token account owner is not the winning side"
+    }
+  ],
+  "types": [
+    {
+      "name": "Bet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "price_bps",
+            "type": "u16"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "placed_ts",
+            "type": "i64"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BetPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "price_bps",
+            "type": "u16"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Claimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "to",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "resolver",
+            "type": "pubkey"
+          },
+          {
+            "name": "bet_cap",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Evidence",
+      "docs": [
+        "On-chain settlement evidence — everything needed to independently re-verify via `@txline/verify`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "message_id",
+            "docs": [
+              "the anchored odds tick's MessageId (padded to 48 bytes; e.g. \"1837930444:00003:000323-10021-stab\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                48
+              ]
+            }
+          },
+          {
+            "name": "ts",
+            "docs": [
+              "the tick timestamp (epoch ms)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "prob_bps",
+            "docs": [
+              "the side's de-margined probability at the tick, in bps (e.g. 6969 = 69.69%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "root_hash",
+            "docs": [
+              "the mainnet `daily_batch_roots` 5-min-slot root the resolver verified against"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "pda",
+            "docs": [
+              "the mainnet daily_batch_roots PDA the root was read from"
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "house",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "barrier_bps",
+            "type": "u16"
+          },
+          {
+            "name": "cutoff_ts",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "total_stake",
+            "type": "u64"
+          },
+          {
+            "name": "total_payout",
+            "type": "u64"
+          },
+          {
+            "name": "bet_count",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "evidence",
+            "type": {
+              "defined": {
+                "name": "Evidence"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Resolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "bool"
+          },
+          {
+            "name": "message_id",
+            "type": {
+              "array": [
+                "u8",
+                48
+              ]
+            }
+          },
+          {
+            "name": "root_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

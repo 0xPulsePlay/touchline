@@ -4,3 +4,9 @@ dist/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# anchor / rust build artifacts
+onchain/target/
+onchain/.anchor/
+!onchain/target/idl/
+!onchain/target/deploy/touchline_market-keypair.json
