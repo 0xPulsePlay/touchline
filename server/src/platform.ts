@@ -7,6 +7,7 @@ import {
   NOMINAL_CLOCK_START,
   type ClockSample,
   type PhaseTimeline,
+  type ScorePoint,
   type StatusTransition,
 } from "./phases.js";
 
@@ -88,6 +89,17 @@ export async function timelineFor(
     .map((e) => ({ ts: e.ts, s: (e.minute as number) * 60 }));
   anchors.sort((a, b) => a.ts - b.ts);
 
+  // score-change moments ([participant1, participant2]); baseline 0–0 at kickoff
+  const scoreline: ScorePoint[] = [];
+  const kickoffTs = transitions.find((t) => t.statusId === 2)?.ts;
+  if (kickoffTs !== undefined) scoreline.push({ ts: kickoffTs, p1: 0, p2: 0 });
+  for (const e of detail.timeline?.events ?? []) {
+    if (!Array.isArray(e.score) || e.ts > asOf) continue;
+    const [p1, p2] = e.score as [number, number];
+    const last = scoreline[scoreline.length - 1];
+    if (!last || last.p1 !== p1 || last.p2 !== p2) scoreline.push({ ts: e.ts, p1, p2 });
+  }
+
   const clock: ClockSample[] = [];
   for (const w of phases) {
     if (!PLAYING.has(w.phase)) continue;
@@ -102,7 +114,7 @@ export async function timelineFor(
       w.clockEndS = nominal + Math.round((Math.min(w.endTs, asOf) - w.startTs) / 1000);
     }
   }
-  return { phases, clock };
+  return { phases, clock, scoreline };
 }
 
 export { openingProbe };

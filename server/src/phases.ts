@@ -44,9 +44,18 @@ export interface ClockSample {
   s: number;
 }
 
+/** A score-change moment (participant1, participant2 goals). */
+export interface ScorePoint {
+  ts: number;
+  p1: number;
+  p2: number;
+}
+
 export interface PhaseTimeline {
   phases: PhaseWindow[];
   clock: ClockSample[];
+  /** score-change moments truncated to the observation instant — the UI picks the last ≤ revealTs */
+  scoreline?: ScorePoint[];
 }
 
 export interface StatusTransition {

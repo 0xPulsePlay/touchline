@@ -34,6 +34,8 @@ export interface PhaseWindow {
 export interface PhaseTimeline {
   phases: PhaseWindow[];
   clock: { ts: number; s: number }[];
+  /** score-change moments (participant1, participant2), truncated to the observation instant */
+  scoreline?: { ts: number; p1: number; p2: number }[];
 }
 
 export interface PathResponse {

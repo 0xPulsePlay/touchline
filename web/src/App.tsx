@@ -265,6 +265,18 @@ export function App() {
   const visibleCursor = pathRes ? Math.min(cursor, pathRes.path.length) : 0;
   const now = Date.now();
   const selGroup = simUi ? "live" : sel ? groupOf(sel, now) : "finished";
+  /** running score at a wall-ts, from the asOf-truncated scoreline (null before kickoff data) */
+  const scoreAt = (ts: number): { p1: number; p2: number } | null => {
+    const sl = pathRes?.timeline.scoreline;
+    if (!sl?.length) return null;
+    let cur: { p1: number; p2: number } | null = null;
+    for (const s of sl) {
+      if (s.ts <= ts) cur = { p1: s.p1, p2: s.p2 };
+      else break;
+    }
+    return cur;
+  };
+
   const liveEdgeLabel = (() => {
     if (!sel) return "";
     const edge = revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts;
@@ -274,6 +286,17 @@ export function App() {
       return `KO −${Math.max(0, Math.ceil((sel.startTime - edge) / 60000))}′`;
     }
     return l;
+  })();
+
+  /** score string for the header/switcher: live/sim = running score at the reveal edge */
+  const headScore = (() => {
+    if (!sel) return "vs";
+    if (simUi || isLive) {
+      const edge = revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? 0;
+      const s = scoreAt(edge);
+      return s ? `${s.p1}–${s.p2}` : "vs";
+    }
+    return sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs";
   })();
 
   return (
@@ -301,7 +324,7 @@ export function App() {
           <button className="switcher" onClick={() => setSheetOpen(true)} aria-label="change match">
             {sel ? (
               <>
-                <span className="swteams">{flag(sel.participant1)} {sel.participant1} {sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs"} {sel.participant2} {flag(sel.participant2)}</span>
+                <span className="swteams">{flag(sel.participant1)} {sel.participant1} {headScore} {sel.participant2} {flag(sel.participant2)}</span>
                 <span className="swmeta">{selGroup === "live" ? "LIVE" : fmtDay(sel.startTime)}</span>
               </>
             ) : (
@@ -314,7 +337,7 @@ export function App() {
             <>
               <div className="matchhead">
                 <span className="vs display">
-                  {flag(sel.participant1)} {sel.participant1} {sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs"} {sel.participant2} {flag(sel.participant2)}
+                  {flag(sel.participant1)} {sel.participant1} {headScore} {sel.participant2} {flag(sel.participant2)}
                 </span>
                 <span className={`badge${sel.isFinal ? " ft" : selGroup === "live" ? " live" : ""}`}>
                   {sel.isFinal ? "Full time" : selGroup === "live" ? "Live" : "Scheduled"}
@@ -346,7 +369,7 @@ export function App() {
                     {simUi || isLive ? (
                       <div className="livebar">
                         <span className="livedot" aria-hidden="true" />
-                        <span className="mono livelabel">{simUi ? "SIM · " : "LIVE · "}{liveEdgeLabel}</span>
+                        <span className="mono livelabel">{simUi ? "SIM · " : "LIVE · "}{liveEdgeLabel}{headScore !== "vs" ? ` · ${headScore}` : ""}</span>
                         {simUi && (
                           <>
                             <span className="speeds">
@@ -374,7 +397,9 @@ export function App() {
                         <span className="clock mono">
                           {(() => {
                             const p = pathRes.path[Math.max(0, visibleCursor - 1)];
-                            return p && clockLabel ? clockLabel(p.ts) : "";
+                            if (!p || !clockLabel) return "";
+                            const s = scoreAt(p.ts);
+                            return `${clockLabel(p.ts)}${s ? ` · ${s.p1}–${s.p2}` : ""}`;
                           })()}
                         </span>
                       </div>
