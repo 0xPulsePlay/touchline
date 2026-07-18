@@ -48,7 +48,11 @@ function load(): Market[] {
   }
 }
 
+/** Tests exercise the same store in-memory only — never the on-disk file. */
+const PERSIST = !process.env.VITEST;
+
 function save(all: Market[]): void {
+  if (!PERSIST) return;
   mkdirSync(config.dataDir, { recursive: true });
   writeFileSync(join(config.dataDir, FILE), JSON.stringify(all, null, 2), "utf8");
 }
