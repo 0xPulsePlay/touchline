@@ -12,8 +12,12 @@ interface PhantomProvider {
 const KEY = "touchline.wallet";
 
 export function getProvider(): PhantomProvider | null {
-  const p = (window as unknown as { solana?: PhantomProvider }).solana;
-  return p?.isPhantom ? p : null;
+  // Modern Phantom injects at window.phantom.solana; window.solana may be absent or claimed by
+  // another wallet extension — check the dedicated namespace first.
+  const w = window as unknown as { phantom?: { solana?: PhantomProvider }; solana?: PhantomProvider };
+  const dedicated = w.phantom?.solana;
+  if (dedicated?.isPhantom) return dedicated;
+  return w.solana?.isPhantom ? w.solana : null;
 }
 
 export async function connectWallet(): Promise<string | null> {

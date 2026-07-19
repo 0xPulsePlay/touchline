@@ -1,6 +1,6 @@
 import { connection } from "./config.js";
 import { readChainState, USDC_DECIMALS } from "./tokens.js";
-import { ensureReady, faucet, placeBet } from "./service.js";
+import { balance, ensureReady, faucet, placeBet } from "./service.js";
 import { dealerQuote } from "../dealer.js";
 import type { Side } from "../model.js";
 
@@ -45,6 +45,11 @@ async function targetFixtures(deps: BotDeps): Promise<number[]> {
 }
 
 let running = false;
+/** markets this process's bots already hold a ticket in — one open ticket per (bot, market) */
+const placed = new Set<string>();
+let cycle = 0;
+
+const SIDES: Side[] = ["part1", "part2", "draw"];
 
 export async function startBots(deps: BotDeps): Promise<void> {
   if (running) return;
@@ -58,30 +63,49 @@ export async function startBots(deps: BotDeps): Promise<void> {
   console.log(`[bots] ${FLEET.length} bots funded; trading loop starting`);
 
   const tick = async () => {
+    cycle++;
     try {
       const fixtures = await targetFixtures(deps);
-      for (const fixtureId of fixtures) {
+      for (const [fi, fixtureId] of fixtures.entries()) {
         const f = await deps.getFixture(fixtureId);
         if (!f) continue;
         const path = await deps.pathFor(fixtureId);
         const open = deps.openingProbe(path, f.startTime);
-        // one bot acts per tick (round-robin by time) to pace the feed
-        const b = FLEET[Math.floor(Date.now() / 6000) % FLEET.length]!;
-        const side: Side = "part1";
+        // one bot acts per fixture per tick, staggered so different bots hit different fixtures
+        const b = FLEET[(cycle + fi) % FLEET.length]!;
+
+        // solvency: bots re-faucet themselves when they run low (mock USDC, zero real value)
+        const bal = await balance(b.id, conn).catch(() => 0);
+        if (bal < b.stakeUsdc * 10 ** USDC_DECIMALS) {
+          await faucet(b.id, b.label, 500 * 10 ** USDC_DECIMALS, conn).catch(() => {});
+          console.log(`[bots] ${b.label} re-fauceted (balance ran dry)`);
+        }
+
+        // side + barrier vary deterministically by cycle so the feed shows a real market,
+        // not one actor re-betting one line forever
+        const side = SIDES[(cycle * 2 + fi) % SIDES.length]!;
         const pBps = Math.round((open?.[side] ?? 0) * 100);
-        if (pBps <= 0) continue;
-        const barrierBps = Math.min(9500, pBps + b.barrierOffset(pBps));
+        if (pBps < 300) continue; // don't chase dead lines
+        const jitter = ((cycle * 37) % 5) * 60 - 120; // −120..+120bps, deterministic
+        const barrierBps = Math.max(500, Math.min(9500, pBps + b.barrierOffset(pBps) + jitter));
         const q = dealerQuote(side, pBps, barrierBps, deps.discount());
         if (!q.valid) continue;
+
+        const dedupe = `${b.id}:${fixtureId}:${side}:${barrierBps}`;
+        if (placed.has(dedupe)) continue; // already holds this exact ticket
+
         const cutoffTs = Math.floor(Date.now() / 1000) + 86400;
         await placeBet(b.id, b.label, fixtureId, side, barrierBps,
           Math.round(b.stakeUsdc * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs,
           { bot: true, venueP: Math.max(0.01, Math.min(0.99, pBps / 10000)) }, conn)
-          .then((r) => console.log(`[bots] ${b.label} bet $${b.stakeUsdc} on ${side} touches ${barrierBps / 100}% @ ${(q.priceBps / 100).toFixed(1)}% (${r.sig.slice(0, 8)})`))
-          .catch((e) => console.log(`[bots] ${b.label} skip: ${String(e).slice(0, 80)}`));
+          .then((r) => {
+            placed.add(dedupe);
+            console.log(`[bots] ${b.label} bet $${b.stakeUsdc} on ${side} touches ${barrierBps / 100}% @ ${(q.priceBps / 100).toFixed(1)}% (${r.sig.slice(0, 8)})`);
+          })
+          .catch((e) => console.log(`[bots] ${b.label} skip: ${String(e).slice(0, 200)}`));
       }
     } catch (e) {
-      console.log("[bots] tick error:", String(e).slice(0, 120));
+      console.log("[bots] tick error:", String(e).slice(0, 200));
     }
   };
   void tick();

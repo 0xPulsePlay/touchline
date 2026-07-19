@@ -50,6 +50,24 @@ Everything traces to Mikail's review transcript, the written notes, or STATUS ro
 | D3 | **Calibration made relevant** | Reframe as "why the price has a 0.87 in it" — attach it to the quote (the `× δ` links to it) or collapse it into a compact evidence strip; not an orphan section. |
 | D4 | **Probability graph always on top** | Chosen line renders as the hero series; score + phase in the header (already mostly true — preserve through the tab refactor). |
 
+## B6. Path instruments from IDEAS-PATH-INSTRUMENTS.md (P1 — CONFIRMED, folded in)
+
+- **Heartbreak** ("touches B and still loses") priced `(p/B)(1−B)·δ` and **Comeback** ("drops to A
+  and still wins") priced `A·(1−p)/(1−A)·δ` — two more entries in the B1 type picker (kind codes 3/4).
+  Resolution = touch-tick Merkle proof **AND** final result (winner logic already exists). Hedge =
+  the two-phase self-financing switch (win-shares → NO-shares at the touch) recorded as a two-phase
+  lot. **The England semifinal launch example IS a heartbreak that resolved YES** — lead demo beat.
+- **Drama theorem into the white paper**: `E[Σ(ΔM)²] = p(1−p)` (model-free), in-play remaining drama
+  `M_t(1−M_t)`, match total `1−Σp_o²` (Gini impurity), and the **exact pathwise replication**
+  identity `Σ(ΔM)² = M_T − p² − 2ΣM_iΔM_i` — "the instrument family only a proof-carrying odds feed
+  can settle." Tradable Drama Swaps = roadmap (settlement proof burden → validateStatV3 multiproof).
+- **Remaining-drama gauge** on the chart (`M_t(1−M_t)` — trivial) + **drama leaderboard** on home
+  (server sums `Σ(ΔM)²` per finished fixture; sortable tiles) if an hour is spare.
+- Garnishes (peak ladder = differences of touch quotes; time-boxed touches = empirical
+  first-passage calibration; occupation time) → technical write-up roadmap section.
+- Demo line: *"Polymarket pays you when your team wins. Touchline can pay you when your team breaks
+  your heart — and prove it with one Merkle proof."*
+
 ## B5. Parlay / multi-leg (P1 — CONFIRMED in scope tonight)
 
 - Ticket builder: combine 2–4 touch legs (cross-fixture, or cross-line within a fixture with a

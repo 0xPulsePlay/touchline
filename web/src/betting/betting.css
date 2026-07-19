@@ -44,6 +44,8 @@
 .stakebtn:disabled { opacity: 0.4; cursor: default; }
 .btn2.settle { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
+.bet-hint { margin-top: 10px; font-size: 0.8rem; color: var(--ink-2); background: var(--surface-2);
+  border-radius: 8px; padding: 8px 12px; }
 .bet-msg { margin-top: 12px; font-size: 0.85rem; padding: 9px 12px; border-radius: 8px; line-height: 1.45; }
 .bet-msg.ok { background: var(--good-bg); color: var(--good); }
 .bet-msg.err { background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit);

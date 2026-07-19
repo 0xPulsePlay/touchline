@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DATA_DIR } from "./config.js";
+import type { BetKind } from "../dealer.js";
 import type { Side } from "../model.js";
 
 /**
@@ -47,6 +48,10 @@ export interface HedgeLot {
   betSig: string;
   side: Side;
   barrierBps: number;
+  /** bet kind — determines the replicating position (default "up") */
+  kind?: BetKind;
+  /** BAND: the lower edge (bps) */
+  barrier2Bps?: number;
   /** premium the user staked (house cash in) */
   stakeUsdc: number;
   /** dollars the house owes if this ticket resolves YES */
@@ -54,9 +59,9 @@ export interface HedgeLot {
   /** win probability used to size/price the hedge (fraction 0..1) */
   venueP: number;
   venue: string;
-  /** win-shares held = payout / B */
+  /** primary position size (win-shares for up/heartbreak, NO-shares for down/comeback; combined for band) */
   shares: number;
-  /** cost to acquire the shares now = shares × p */
+  /** cost to acquire the position now (self-financing ≈ the fair premium) */
   costUsdc: number;
   ts: number;
 }
@@ -87,13 +92,53 @@ function load(): HedgeLedger {
 function save(l: HedgeLedger): void { mkdirSync(DATA_DIR, { recursive: true }); writeFileSync(FILE, JSON.stringify(l, null, 2), "utf8"); }
 let ledger = load();
 
+/**
+ * The replicating position per kind (all self-financing at the fair price):
+ *   up         P/B win-shares @ p                     — worth P at the touch
+ *   down       P/(1−L) NO-shares @ (1−p)              — worth P when X touches L (NO price 1−L)
+ *   band       both legs, each covering full P        — whichever edge trips funds the payout
+ *   heartbreak P(1−B)/B win-shares @ p                — at the touch worth P(1−B); switch into
+ *                                                       P NO-shares at (1−B): exactly self-financing;
+ *                                                       the NO-shares pay P iff the team loses
+ *   comeback   P·A/(1−A) NO-shares @ (1−p)            — mirror two-phase switch at the down-touch
+ */
+export function positionFor(kind: BetKind, payoutUsdc: number, barrierBps: number, barrier2Bps: number | undefined, venueP: number): { shares: number; cost: number } {
+  const B = barrierBps / 10000;
+  switch (kind) {
+    case "up": return replicate(payoutUsdc, barrierBps, venueP);
+    case "down": {
+      const shares = payoutUsdc / (1 - B); // NO-shares
+      return { shares, cost: shares * (1 - venueP) };
+    }
+    case "band": {
+      // exact gambler's-ruin replication: N = P/(U−L) win-shares + cash leg −P·L/(U−L);
+      // worth P at an up-exit, ~0 at a down-exit, cost = P(p−L)/(U−L) = the fair premium
+      const L = (barrier2Bps ?? 0) / 10000;
+      const N = payoutUsdc / Math.max(1e-9, B - L);
+      return { shares: N, cost: N * venueP - (payoutUsdc * L) / Math.max(1e-9, B - L) };
+    }
+    case "heartbreak": {
+      const shares = (payoutUsdc * (1 - B)) / B; // win-shares, phase 1
+      return { shares, cost: shares * venueP };
+    }
+    case "comeback": {
+      const A = B; // primary barrier is the down edge for comeback
+      const shares = (payoutUsdc * A) / (1 - A); // NO-shares, phase 1
+      return { shares, cost: shares * (1 - venueP) };
+    }
+  }
+}
+
 /** Record the hedge the house takes against one bet. Returns the lot. */
 export function recordHedge(args: {
-  marketKey: string; betSig: string; side: Side; barrierBps: number; stakeUsdc: number; payoutUsdc: number; venueP: number; venue?: string;
+  marketKey: string; betSig: string; side: Side; barrierBps: number; stakeUsdc: number; payoutUsdc: number; venueP: number;
+  kind?: BetKind; barrier2Bps?: number; venue?: string;
 }): HedgeLot {
-  const { shares, cost } = replicate(args.payoutUsdc, args.barrierBps, args.venueP); // P/B win-shares — worth P at the touch
+  const kind = args.kind ?? "up";
+  const { shares, cost } = positionFor(kind, args.payoutUsdc, args.barrierBps, args.barrier2Bps, args.venueP);
   const lot: HedgeLot = {
     marketKey: args.marketKey, betSig: args.betSig, side: args.side, barrierBps: args.barrierBps,
+    kind, barrier2Bps: args.barrier2Bps,
     stakeUsdc: args.stakeUsdc, payoutUsdc: args.payoutUsdc, venueP: args.venueP, venue: args.venue ?? "txline-winprob",
     shares, costUsdc: cost, ts: Date.now(),
   };
@@ -158,9 +203,50 @@ export function treasury(marketKey: string, barrierBps: number): Treasury {
  * (≥ B, capturing any jump overshoot); the house pays `liability` and keeps the difference. NO →
  * shares expire worthless, the house owes nothing and keeps the premiums it collected elsewhere.
  */
+/**
+ * Value one lot's position at settlement. `touchFrac` = the probability printed by the resolving
+ * tick (the touch/exit tick); 0 means the trigger never fired. Two-phase kinds (heartbreak,
+ * comeback) also need the touch info on NO outcomes — a touched-but-wrong-result NO liquidates the
+ * switched position, a never-touched NO expires phase 1 worthless (or the claim just pays 0).
+ */
+export function lotValueAtSettlement(lot: HedgeLot, outcome: "yes" | "no", touchFrac: number): number {
+  const kind = lot.kind ?? "up";
+  const P = lot.payoutUsdc;
+  const B = lot.barrierBps / 10000;
+  switch (kind) {
+    case "up":
+      return outcome === "yes" ? lot.shares * Math.max(touchFrac, B) : 0;
+    case "down":
+      // NO-shares liquidate at (1 − touch) ≥ (1 − L) on a down-touch; expire at 0 if never touched
+      // (a never-touched path can't terminate at 0, so the team won and NO-shares are worthless)
+      return outcome === "yes" ? lot.shares * Math.max(1 - touchFrac, 1 - B) : 0;
+    case "band": {
+      // liquidate the whole position at the first exit, whichever edge: N·M_exit − P·L/(U−L)
+      const L = (lot.barrier2Bps ?? 0) / 10000;
+      const cash = (P * L) / Math.max(1e-9, B - L);
+      return lot.shares * touchFrac - cash;
+    }
+    case "heartbreak": {
+      // phase 1 sold at the touch (shares×touch), phase 2 bought P NO-shares at (1−touch);
+      // NO-shares pay P iff the team lost (the YES condition). Never touched → 0.
+      if (touchFrac <= 0) return 0;
+      const switchNet = lot.shares * touchFrac - P * (1 - touchFrac);
+      return switchNet + (outcome === "yes" ? P : 0);
+    }
+    case "comeback": {
+      // mirror: phase 1 NO-shares sold at the down-touch (worth 1−touch each), phase 2 buys P
+      // win-shares at touch; they pay P iff the team won (the YES condition).
+      if (touchFrac <= 0) return 0;
+      const switchNet = lot.shares * (1 - touchFrac) - P * touchFrac;
+      return switchNet + (outcome === "yes" ? P : 0);
+    }
+  }
+}
+
 export function realizeHedge(marketKey: string, barrierBps: number, outcome: "yes" | "no", touchProbFrac: number): HedgeRealized {
   const t = treasury(marketKey, barrierBps);
-  const hedgeValue = hedgeValueAt(t.shares, outcome, touchProbFrac, barrierBps);
+  const lots = lotsFor(marketKey);
+  const hedgeValue = lots.reduce((a, l) => a + lotValueAtSettlement(l, outcome, touchProbFrac), 0);
   const paid = outcome === "yes" ? t.liabilityUsdc : 0;
   // full house P&L: premiums in − hedge cost − payout out + hedge liquidation
   const net = t.premiumsUsdc - t.hedgeCostUsdc + hedgeValue - paid;

@@ -8,17 +8,37 @@ import { ensureChainSetup, ensureAta, faucetMint, tokenBalance, readChainState, 
 import { loadProgram, configPda, marketPda, vaultPda, betPda, messageIdBytes, TOKEN_PROGRAM_ID, BN } from "./program.js";
 import { ensureWallet, fundSol, getWallet, type SessionWallet } from "./wallets.js";
 import { recordHedge } from "./hedge.js";
+import { KIND_IDX, type BetKind } from "../dealer.js";
 import type { Side } from "../model.js";
 
 const LEDGER = resolve(DATA_DIR, "onchain-ledger.json");
 
 const SIDE_IDX: Record<Side, number> = { part1: 0, draw: 1, part2: 2 };
 
-export interface LedgerMarket { key: string; fixtureId: number; side: Side; barrierBps: number; createdAt: number; status: "open" | "yes" | "no"; }
+/**
+ * On-chain market identity. The program's market PDA seeds are (fixture_id: i64, side: u8,
+ * barrier: u16) and the program treats them as opaque — so richer identity is ENCODED into them
+ * without a program change:
+ *   side u8   = kind*3 + side (up:0-2, down:3-5, band:6-8)
+ *   fid  i64  = fixtureId | line<<32 | epoch<<40  (line = probability series, epoch = re-run seed)
+ * The ledger keeps the decoded fields; the chain sees stable unique seeds. Band markets carry the
+ * lower edge (barrier2) in the ledger + resolution evidence — the chain's `barrier` is the upper edge.
+ */
+export const sideCode = (kind: BetKind, side: Side): number => KIND_IDX[kind] * 3 + SIDE_IDX[side];
+export const chainFid = (fixtureId: number, line = 0, epoch = 0): number =>
+  fixtureId + line * 2 ** 32 + epoch * 2 ** 40;
+
+export interface MarketOpts { kind?: BetKind; barrier2Bps?: number; line?: number; epoch?: number }
+
+export interface LedgerMarket {
+  key: string; fixtureId: number; side: Side; barrierBps: number; createdAt: number; status: "open" | "yes" | "no";
+  kind?: BetKind; barrier2Bps?: number; line?: number; epoch?: number;
+}
 export interface LedgerBet {
   sig: string; marketKey: string; fixtureId: number; side: Side; barrierBps: number;
   bettor: string; label: string; bot: boolean; nonce: number;
   amount: number; priceBps: number; payout: number; ts: number; claimed: boolean;
+  kind?: BetKind; barrier2Bps?: number; line?: number;
 }
 interface Ledger { markets: LedgerMarket[]; bets: LedgerBet[] }
 
@@ -76,23 +96,33 @@ export async function balance(sessionId: string, conn?: Connection): Promise<num
 }
 
 /** Create the on-chain barrier market if it doesn't exist. Returns its PDA key. */
-export async function ensureMarket(fixtureId: number, side: Side, barrierBps: number, cutoffTs: number, conn?: Connection): Promise<string> {
+export async function ensureMarket(
+  fixtureId: number, side: Side, barrierBps: number, cutoffTs: number,
+  mOpts: MarketOpts = {}, conn?: Connection,
+): Promise<string> {
   const c = conn ?? connection();
   const { usdcMint } = await ensureReady(c);
   const house = houseKeypair();
   const { program } = loadProgram(c, house);
-  const sideIdx = SIDE_IDX[side];
-  const market = marketPda(fixtureId, sideIdx, barrierBps);
+  const kind = mOpts.kind ?? "up";
+  const line = mOpts.line ?? 0;
+  const epoch = mOpts.epoch ?? 0;
+  const code = sideCode(kind, side);
+  const fid = chainFid(fixtureId, line, epoch);
+  const market = marketPda(fid, code, barrierBps);
   const key = market.toBase58();
   if (!(await c.getAccountInfo(market))) {
     const vault = vaultPda(market);
-    await program.methods.createMarket(new BN(fixtureId), sideIdx, barrierBps, new BN(cutoffTs))
+    await program.methods.createMarket(new BN(fid), code, barrierBps, new BN(cutoffTs))
       .accounts({
         house: house.publicKey, mint: usdcMint, market, vault,
         tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
         rent: new PublicKey("SysvarRent111111111111111111111111111111111"),
       }).rpc();
-    ledger.markets.push({ key, fixtureId, side, barrierBps, createdAt: Date.now(), status: "open" });
+    ledger.markets.push({
+      key, fixtureId, side, barrierBps, createdAt: Date.now(), status: "open",
+      kind, barrier2Bps: mOpts.barrier2Bps, line, epoch,
+    });
     saveLedger(ledger);
   }
   return key;
@@ -101,14 +131,16 @@ export async function ensureMarket(fixtureId: number, side: Side, barrierBps: nu
 /** Place a co-signed fixed-odds bet (house + session both sign). Returns the tx signature. */
 export async function placeBet(
   sessionId: string, label: string, fixtureId: number, side: Side, barrierBps: number,
-  amountUnits: number, priceBps: number, cutoffTs: number, opts: { bot?: boolean; venueP?: number } = {}, conn?: Connection,
+  amountUnits: number, priceBps: number, cutoffTs: number,
+  opts: { bot?: boolean; venueP?: number } & MarketOpts = {}, conn?: Connection,
 ): Promise<LedgerBet> {
   const c = conn ?? connection();
   const { usdcMint } = await ensureReady(c);
   const house = houseKeypair();
   const w = await ensureWallet(sessionId, label, { bot: opts.bot }, c);
   await fundSol(w.keypair.publicKey, Math.floor(0.05 * 1e9), c);
-  const marketKey = await ensureMarket(fixtureId, side, barrierBps, cutoffTs, c);
+  const marketKey = await ensureMarket(fixtureId, side, barrierBps, cutoffTs,
+    { kind: opts.kind, barrier2Bps: opts.barrier2Bps, line: opts.line, epoch: opts.epoch }, c);
   const market = new PublicKey(marketKey);
   const vault = vaultPda(market);
   const nonce = Date.now();
@@ -130,16 +162,20 @@ export async function placeBet(
     sig, marketKey, fixtureId, side, barrierBps,
     bettor: w.keypair.publicKey.toBase58(), label, bot: !!opts.bot, nonce,
     amount: amountUnits, priceBps, payout, ts: Date.now(), claimed: false,
+    kind: opts.kind ?? "up", barrier2Bps: opts.barrier2Bps, line: opts.line,
   };
   ledger.bets.push(rec);
   saveLedger(ledger);
 
-  // hedge the ticket: take the offsetting win-share position (net-zero replication).
+  // hedge the ticket: take the kind-appropriate offsetting position (net-zero replication).
   // venueP = the side's current win probability p. When a caller omits it, reconstruct p from the
   // quoted price: price ≈ (p/B)·discount·spread ⟹ p ≈ price·B/discount (spread absorbed in the clamp).
   const venueP = opts.venueP
     ?? Math.max(0.01, Math.min(0.99, (priceBps / 10000) * (barrierBps / 10000) / 0.87));
-  recordHedge({ marketKey, betSig: sig, side, barrierBps, stakeUsdc: amountUnits / 1e6, payoutUsdc: payout / 1e6, venueP });
+  recordHedge({
+    marketKey, betSig: sig, side, barrierBps, stakeUsdc: amountUnits / 1e6, payoutUsdc: payout / 1e6,
+    venueP, kind: opts.kind ?? "up", barrier2Bps: opts.barrier2Bps,
+  });
   return rec;
 }
 

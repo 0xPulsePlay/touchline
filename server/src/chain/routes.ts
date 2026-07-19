@@ -6,9 +6,12 @@ import {
   activity, marketBets, listLedgerMarkets, SIDE_IDX,
 } from "./service.js";
 import { receiptForTick } from "../proofs.js";
-import { dealerQuote } from "../dealer.js";
+import { dealerQuote, dealerQuoteKind, type BetKind } from "../dealer.js";
 import { treasury, realizeHedge, bookSummary } from "./hedge.js";
 import type { Side } from "../model.js";
+
+const KINDS: BetKind[] = ["up", "down", "band", "heartbreak", "comeback"];
+const asKind = (v: unknown): BetKind => (typeof v === "string" && (KINDS as string[]).includes(v) ? (v as BetKind) : "up");
 
 const SIDES: Side[] = ["part1", "draw", "part2"];
 const asSide = (v: unknown): Side | null => (typeof v === "string" && (SIDES as string[]).includes(v) ? (v as Side) : null);
@@ -20,7 +23,7 @@ const asSide = (v: unknown): Side | null => (typeof v === "string" && (SIDES as 
 export function registerChainRoutes(
   app: FastifyInstance,
   deps: {
-    getFixture: (id: number) => Promise<{ fixtureId: number; startTime: number; participant1: string; participant2: string; isFinal: boolean } | undefined>;
+    getFixture: (id: number) => Promise<{ fixtureId: number; startTime: number; participant1: string; participant2: string; isFinal: boolean; finalP1?: number | null; finalP2?: number | null } | undefined>;
     pathFor: (id: number, asOf?: number) => Promise<{ ts: number; messageId: string; part1: number; draw: number; part2: number }[]>;
     openingProbe: (path: { ts: number; part1: number; draw: number; part2: number }[], startTime: number) => { part1: number; draw: number; part2: number } | undefined;
     discount: () => number;
@@ -57,34 +60,41 @@ export function registerChainRoutes(
     return { balanceUsdc: b / 10 ** USDC_DECIMALS };
   });
 
-  /** Dealer quote — barrier gated to ≥ current probability + step. */
-  app.get<{ Querystring: { fixtureId: string; side: string; barrier: string } }>("/api/dealer/quote", async (req, reply) => {
-    const f = await deps.getFixture(Number(req.query.fixtureId));
-    if (!f) return reply.code(404).send({ error: "unknown fixture" });
-    const side = asSide(req.query.side);
-    if (!side) return reply.code(400).send({ error: "bad side" });
-    const path = await deps.pathFor(f.fixtureId);
-    const open = deps.openingProbe(path, f.startTime);
-    // current probability = latest tick's side value (live), else opening
-    const pBps = Math.round((open?.[side] ?? 0) * 100);
-    const barrierBps = Math.round(Number(req.query.barrier) * 100);
-    return dealerQuote(side, pBps, barrierBps, deps.discount());
-  });
+  /** Dealer quote — kind-aware (up/down/band/heartbreak/comeback), barriers gated per kind. */
+  app.get<{ Querystring: { fixtureId: string; side: string; barrier: string; kind?: string; barrier2?: string } }>(
+    "/api/dealer/quote",
+    async (req, reply) => {
+      const f = await deps.getFixture(Number(req.query.fixtureId));
+      if (!f) return reply.code(404).send({ error: "unknown fixture" });
+      const side = asSide(req.query.side);
+      if (!side) return reply.code(400).send({ error: "bad side" });
+      const kind = asKind(req.query.kind);
+      const path = await deps.pathFor(f.fixtureId);
+      const open = deps.openingProbe(path, f.startTime);
+      // current probability = latest tick's side value (live), else opening
+      const pBps = Math.round((open?.[side] ?? 0) * 100);
+      const barrierBps = Math.round(Number(req.query.barrier) * 100);
+      const barrier2Bps = req.query.barrier2 !== undefined ? Math.round(Number(req.query.barrier2) * 100) : undefined;
+      return dealerQuoteKind(kind, side, pBps, barrierBps, deps.discount(), { barrier2Bps });
+    },
+  );
 
-  /** Place a bet at the current gated dealer quote (server prices + co-signs). */
-  app.post<{ Body: { sessionId: string; label?: string; fixtureId: number; side: string; barrier: number; usdc: number; bot?: boolean } }>(
+  /** Place a bet at the current gated dealer quote (server prices + co-signs). Kind-aware. */
+  app.post<{ Body: { sessionId: string; label?: string; fixtureId: number; side: string; barrier: number; barrier2?: number; kind?: string; usdc: number; epoch?: number; bot?: boolean } }>(
     "/api/bet",
     async (req, reply) => {
-      const { sessionId, label, fixtureId, usdc, bot } = req.body ?? ({} as any);
+      const { sessionId, label, fixtureId, usdc, bot, epoch } = req.body ?? ({} as any);
       const side = asSide(req.body?.side);
       if (!sessionId || !side || !fixtureId) return reply.code(400).send({ error: "sessionId, side, fixtureId required" });
+      const kind = asKind(req.body?.kind);
       const f = await deps.getFixture(Number(fixtureId));
       if (!f) return reply.code(404).send({ error: "unknown fixture" });
       const path = await deps.pathFor(f.fixtureId);
       const open = deps.openingProbe(path, f.startTime);
       const pBps = Math.round((open?.[side] ?? 0) * 100);
       const barrierBps = Math.round(req.body.barrier * 100);
-      const q = dealerQuote(side, pBps, barrierBps, deps.discount());
+      const barrier2Bps = req.body.barrier2 !== undefined ? Math.round(req.body.barrier2 * 100) : undefined;
+      const q = dealerQuoteKind(kind, side, pBps, barrierBps, deps.discount(), { barrier2Bps });
       if (!q.valid) return reply.code(400).send({ error: q.reason });
       const capUsdc = (readChainState()?.betCap ?? 0) / 10 ** USDC_DECIMALS;
       const amount = Math.min(usdc ?? 5, capUsdc);
@@ -92,47 +102,92 @@ export function registerChainRoutes(
       const venueP = Math.max(0.01, Math.min(0.99, pBps / 10000)); // hedge struck at the side's current win price
       try {
         const rec = await placeBet(sessionId, label ?? "you", f.fixtureId, side, barrierBps,
-          Math.round(amount * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs, { bot: !!bot, venueP }, conn);
+          Math.round(amount * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs,
+          { bot: !!bot, venueP, kind, barrier2Bps, epoch: epoch ?? 0 }, conn);
         return {
           sig: rec.sig, marketKey: rec.marketKey, priceBps: q.priceBps, payoutMult: q.payoutMult,
-          amountUsdc: amount, payoutUsdc: rec.payout / 10 ** USDC_DECIMALS,
+          amountUsdc: amount, payoutUsdc: rec.payout / 10 ** USDC_DECIMALS, kind,
         };
       } catch (e) { return reply.code(502).send({ error: String(e) }); }
     },
   );
 
-  /** Resolve a market from the recorded path, anchoring REAL mainnet-verified evidence for YES. */
+  /**
+   * Resolve a market from the recorded path, anchoring REAL mainnet-verified evidence.
+   * Kind-aware triggers:
+   *   up          first tick ≥ B → YES; final without a touch → NO
+   *   down        first tick ≤ B → YES; final without → NO
+   *   band        RACE: first tick outside [L, U] decides — up-exit YES, down-exit NO;
+   *               both outcomes carry a Merkle-provable tick (even NO is cryptographic)
+   *   heartbreak  touch ≥ B AND final result = side did NOT win → YES
+   *   comeback    touch ≤ B AND final result = side WON → YES
+   */
   app.post<{ Params: { key: string } }>("/api/market/:key/resolve", async (req, reply) => {
     const lm = listLedgerMarkets().find((m) => m.key === req.params.key);
     if (!lm) return reply.code(404).send({ error: "unknown market" });
     if (lm.status !== "open") return reply.code(409).send({ error: `already ${lm.status}` });
     const f = await deps.getFixture(lm.fixtureId);
     if (!f) return reply.code(404).send({ error: "unknown fixture" });
+    const kind = lm.kind ?? "up";
     const path = await deps.pathFor(lm.fixtureId);
-    const barrierPct = lm.barrierBps / 100;
-    const hit = path.find((t) => t.ts >= f.startTime && t[lm.side] >= barrierPct);
+    const inPlay = path.filter((t) => t.ts >= f.startTime);
+    const bPct = lm.barrierBps / 100;
+    const b2Pct = (lm.barrier2Bps ?? 0) / 100;
+
+    /** side won at full time? (win-prob line terminates at 1 only on a win; draw counts as no-win) */
+    const sideWon = (): boolean => {
+      const p1 = f.finalP1 ?? 0, p2 = f.finalP2 ?? 0;
+      if (lm.side === "part1") return p1 > p2;
+      if (lm.side === "part2") return p2 > p1;
+      return p1 === p2;
+    };
+
+    // find the deciding tick + provisional outcome per kind
+    let hit: (typeof path)[number] | undefined;
+    let outcome: "yes" | "no" | "pending" = "pending";
+    if (kind === "up" || kind === "heartbreak") {
+      hit = inPlay.find((t) => t[lm.side] >= bPct);
+    } else if (kind === "down" || kind === "comeback") {
+      hit = inPlay.find((t) => t[lm.side] <= bPct);
+    } else {
+      hit = inPlay.find((t) => t[lm.side] >= bPct || t[lm.side] <= b2Pct);
+    }
+
+    if (kind === "up" || kind === "down") {
+      outcome = hit ? "yes" : f.isFinal ? "no" : "pending";
+    } else if (kind === "band") {
+      outcome = hit ? (hit[lm.side] >= bPct ? "yes" : "no") : f.isFinal ? "no" : "pending";
+    } else if (kind === "heartbreak") {
+      outcome = !hit ? (f.isFinal ? "no" : "pending") : f.isFinal ? (sideWon() ? "no" : "yes") : "pending";
+    } else { // comeback
+      outcome = !hit ? (f.isFinal ? "no" : "pending") : f.isFinal ? (sideWon() ? "yes" : "no") : "pending";
+    }
+    if (outcome === "pending") {
+      return reply.code(409).send({ error: hit ? "trigger observed — awaiting the final result" : "no trigger yet and fixture not final" });
+    }
+
+    const touchFrac = hit ? hit[lm.side] / 100 : 0;
     try {
       if (hit) {
+        // whichever way it resolves, the deciding tick is real — anchor its mainnet-verified proof
         const receipt = await receiptForTick(hit.messageId, hit.ts);
         const v = receipt.verification;
         const rootHash = v?.onChainRootHex ? [...Buffer.from(v.onChainRootHex.replace(/^0x/, ""), "hex").subarray(0, 32)] : [...Buffer.alloc(32)];
-        const sig = await resolveMarketOnChain(lm.key, true, {
+        const sig = await resolveMarketOnChain(lm.key, outcome === "yes", {
           messageId: hit.messageId, ts: hit.ts, probBps: Math.round(hit[lm.side] * 100),
           rootHash: rootHash.length === 32 ? rootHash : [...Buffer.alloc(32)],
           pda: v?.pda ?? "11111111111111111111111111111111",
         }, conn);
-        // realize the hedge: win-shares liquidate at the touching probability (≥ B, captures overshoot).
-        // path values are percentages (0..100); realizeHedge wants a fraction.
-        const hedge = realizeHedge(lm.key, lm.barrierBps, "yes", hit[lm.side] / 100);
-        return { outcome: "yes", sig, verified: receipt.verified, receipt, hedge };
+        const hedge = realizeHedge(lm.key, lm.barrierBps, outcome, touchFrac);
+        return { outcome, sig, verified: receipt.verified, receipt, hedge, kind };
       }
-      if (!f.isFinal) return reply.code(409).send({ error: "no touch yet and fixture not final" });
+      // no deciding tick — final-whistle attestation (nothing to prove; the claim pays 0)
       const sig = await resolveMarketOnChain(lm.key, false, {
         messageId: `final:${lm.fixtureId}`, ts: Date.now(), probBps: 0, rootHash: [...Buffer.alloc(32)],
         pda: "11111111111111111111111111111111",
       }, conn);
       const hedge = realizeHedge(lm.key, lm.barrierBps, "no", 0);
-      return { outcome: "no", sig, hedge };
+      return { outcome: "no", sig, hedge, kind };
     } catch (e) { return reply.code(502).send({ error: String(e) }); }
   });
 

@@ -61,14 +61,14 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
   }, []);
 
   const faucet = async () => {
-    setBusy("faucet"); setMsg(null);
+    setBusy("faucet"); setMsg({ kind: "ok", text: "Minting 100 tUSDC on devnet…" });
     try { const r = await api.faucet(sid, "you", 100); setBal(r.balanceUsdc); setMsg({ kind: "ok", text: `+100 tUSDC — balance ${r.balanceUsdc.toFixed(2)}` }); }
-    catch (e) { setMsg({ kind: "err", text: String(e) }); } finally { setBusy(null); }
+    catch (e) { setMsg({ kind: "err", text: `Faucet failed — ${String(e)}` }); } finally { setBusy(null); }
   };
 
   const placeBet = async (usdc: number) => {
     if (!quote?.valid) { setMsg({ kind: "err", text: quote?.reason ?? "invalid barrier" }); return; }
-    setBusy("bet"); setMsg(null);
+    setBusy("bet"); setMsg({ kind: "ok", text: "Confirming on devnet — co-signing + escrowing the payout…" });
     try {
       const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, usdc });
       lastBet.current = { sig: r.sig, marketKey: r.marketKey };
@@ -147,11 +147,14 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
         <div className="bet-actions">
           {[2, 5, 10].map((v) => (
             <button key={v} className="stakebtn" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < v} onClick={() => placeBet(v)}>
-              Bet ${v}
+              {busy === "bet" ? "…" : `Bet $${v}`}
             </button>
           ))}
           {lastBet.current && <button className="btn2 settle" onClick={settle} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>}
         </div>
+        {quote?.valid && (bal ?? 0) < 2 && busy !== "faucet" && (
+          <div className="bet-hint">Balance too low to bet — hit <b>＋ Faucet 100</b> above to grab devnet tUSDC.</div>
+        )}
         {msg && <div className={`bet-msg ${msg.kind}`}>{msg.text}</div>}
       </div>
 
