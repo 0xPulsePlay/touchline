@@ -68,14 +68,6 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, kin
     : [];
   const line = (key: Side) =>
     visible.map((p, i) => `${i ? "L" : "M"}${X(p.ts).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join(" ");
-  // soft area under a series (restyle only — same points as line(), closed to the baseline)
-  const area = (key: Side) => {
-    if (visible.length < 2) return "";
-    const base = Y(0).toFixed(1);
-    const x0 = X(visible[0]!.ts).toFixed(1);
-    const x1 = X(visible[visible.length - 1]!.ts).toFixed(1);
-    return `${line(key)} L${x1} ${base} L${x0} ${base} Z`;
-  };
 
   // kind-aware trigger marker: up/heartbreak look above, down/comeback below, band = either edge
   const downTrigger = kind === "down" || kind === "comeback";
@@ -198,24 +190,8 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, kin
         </g>
       )}
 
-      {/* soft neon area fills under the two team series — vertical fade to the baseline */}
-      <defs>
-        {(["part1", "part2"] as Side[]).map((k) => (
-          <linearGradient key={`g-${k}`} id={`pcfade-${k}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={COLOR[k] === "var(--home)" ? "#1fb96b" : "#ff4d5e"} stopOpacity={0.28} />
-            <stop offset="70%" stopColor={COLOR[k] === "var(--home)" ? "#1fb96b" : "#ff4d5e"} stopOpacity={0.04} />
-            <stop offset="100%" stopColor={COLOR[k] === "var(--home)" ? "#1fb96b" : "#ff4d5e"} stopOpacity={0} />
-          </linearGradient>
-        ))}
-      </defs>
-      {(["part1", "part2"] as Side[]).filter((k) => names[k] !== "").map((k) => (
-        <path key={`a-${k}`} className="pc-area" d={area(k)} fill={`url(#pcfade-${k})`} stroke="none"
-          opacity={k === side ? 1 : 0.3} />
-      ))}
-
       {(["part1", "draw", "part2"] as Side[]).filter((k) => names[k] !== "").map((k) => (
-        <path key={k} className={`pc-line${k === side ? " sel" : ""}`} d={line(k)} fill="none" stroke={COLOR[k]}
-          style={{ color: COLOR[k] }}
+        <path key={k} d={line(k)} fill="none" stroke={COLOR[k]}
           strokeWidth={k === side ? 2.6 : 1.4} opacity={k === side ? 1 : 0.55}
           strokeLinejoin="round" strokeLinecap="round" />
       ))}

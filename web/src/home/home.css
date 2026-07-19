@@ -13,10 +13,10 @@
   padding: 0 clamp(16px, 4vw, 40px) 72px;
 }
 
-/* ── hero / masthead (compact terminal) ──────────────────────────────── */
+/* ── hero / masthead ─────────────────────────────────────────────────── */
 .tl-hero {
   position: relative;
-  padding: clamp(18px, 3vw, 28px) 0 18px;
+  padding: clamp(24px, 4vw, 38px) 0 22px;
   border-bottom: 1px solid var(--line);
   overflow: hidden;
 }
@@ -25,16 +25,16 @@
   inset: 0 0 auto;
   height: 1px;
   pointer-events: none;
-  background: linear-gradient(90deg, var(--pitch), color-mix(in srgb, var(--pitch) 22%, transparent) 38%, transparent 72%);
-  opacity: 0.6;
+  background: linear-gradient(90deg, var(--pitch), color-mix(in srgb, var(--pitch) 18%, transparent) 38%, transparent 72%);
+  opacity: 0.42;
 }
 .tl-hero-kicker {
   position: relative;
-  margin: 0 0 11px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.6rem;
+  margin: 0 0 12px;
+  font-family: Futura, "Century Gothic", sans-serif;
+  font-size: 0.64rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -48,24 +48,26 @@
 .tl-hero-title {
   position: relative;
   margin: 0;
-  font-weight: 800;
-  font-size: clamp(1.55rem, 4vw, 2.15rem);
-  line-height: 1.08;
+  font-family: Futura, "Century Gothic", "Trebuchet MS", sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.72rem, 4.5vw, 2.45rem);
+  line-height: 1.1;
   letter-spacing: -0.025em;
-  max-width: 22ch;
+  max-width: 24ch;
   text-wrap: balance;
 }
 .tl-hero-em {
-  color: var(--pitch);
+  color: var(--ink-2);
   font-style: normal;
   position: relative;
 }
 .tl-hero-lede {
   position: relative;
-  margin: 13px 0 0;
-  max-width: 68ch;
-  font-size: 0.9rem;
-  line-height: 1.55;
+  margin: 15px 0 0;
+  max-width: 72ch;
+  font-family: Charter, Georgia, serif;
+  font-size: 0.94rem;
+  line-height: 1.58;
   color: var(--ink-2);
   text-wrap: pretty;
 }
@@ -106,12 +108,14 @@
   border-radius: var(--radius-md, 10px);
   background: var(--surface);
   color: var(--ink);
+  font-family: Charter, Georgia, serif;
   font-size: 0.9rem;
 }
 .tl-search input::placeholder { color: var(--ink-3); }
 .tl-search input:focus {
   outline: none;
   border-color: var(--pitch);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pitch) 16%, transparent);
 }
 .tl-search-icon {
   position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
@@ -156,8 +160,8 @@
   font-variant-numeric: tabular-nums;
 }
 .tl-rubric-kicker {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.66rem; letter-spacing: 0.04em; color: var(--ink-3);
+  font-family: Charter, Georgia, serif; font-style: italic;
+  font-size: 0.82rem; color: var(--ink-3);
   white-space: nowrap;
 }
 .tl-rubric-rule {
@@ -183,13 +187,15 @@
   padding: 15px 16px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 15px;
   color: var(--ink);
   cursor: pointer;
   text-decoration: none;
+  font-family: Charter, Georgia, serif;
   position: relative;
-  transition: transform 0.12s cubic-bezier(.22,.61,.36,1),
-              border-color 0.12s ease, background 0.12s ease;
+  transition: transform 0.22s cubic-bezier(.22,.61,.36,1),
+              border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+  animation: tl-rise 0.5s cubic-bezier(.22,.61,.36,1) both;
   animation-delay: calc(var(--i, 0) * 45ms);
 }
 .tl-tile::before {
@@ -198,11 +204,14 @@
   position: absolute; left: 15px; right: 15px; top: 0; height: 2px;
   background: var(--fav); border-radius: 0 0 2px 2px;
   opacity: 0; transform: scaleX(0.4); transform-origin: left;
-  transition: opacity 0.12s ease, transform 0.12s cubic-bezier(.22,.61,.36,1);
+  transition: opacity 0.22s ease, transform 0.28s cubic-bezier(.22,.61,.36,1);
 }
 .tl-tile:hover {
+  transform: translateY(-3px);
   border-color: color-mix(in srgb, var(--fav) 45%, var(--line));
   background: color-mix(in srgb, var(--fav) 4%, var(--surface));
+  box-shadow: 0 14px 34px -18px color-mix(in srgb, var(--fav) 60%, transparent),
+              0 2px 8px -4px rgba(0,0,0,0.12);
 }
 .tl-tile:hover::before { opacity: 1; transform: scaleX(1); }
 .tl-tile:focus-visible {
@@ -278,14 +287,14 @@
 }
 .tl-spark {
   display: block; width: 100%; height: 46px; overflow: visible;
-  animation: tl-fade 0.12s ease both;
+  animation: tl-fade 0.5s ease both;
 }
 .tl-spark-mid { stroke: var(--line); stroke-dasharray: 2 3; opacity: 0.7; }
 .tl-spark-ghost { stroke-width: 1.2px; opacity: 0.26; }
 .tl-spark-fav {
   stroke-width: 2.4px;
   stroke-dasharray: 1; stroke-dashoffset: 1;
-  animation: tl-draw 0.12s cubic-bezier(.4,.05,.2,1) forwards;
+  animation: tl-draw 0.9s cubic-bezier(.4,.05,.2,1) forwards;
 }
 .tl-chart-empty {
   height: 46px; display: flex; align-items: center;
@@ -301,6 +310,7 @@
   color: var(--fav);
   background: color-mix(in srgb, var(--fav) 13%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--fav) 38%, transparent);
+  box-shadow: 0 1px 4px -2px rgba(0,0,0,0.25);
 }
 .tl-badge-skel {
   width: 66px; height: 22px; padding: 0; border: none;
@@ -325,9 +335,9 @@
   font-family: Futura, "Century Gothic", sans-serif;
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
   color: var(--ink-3);
-  transition: color 0.12s ease;
+  transition: color 0.2s ease;
 }
-.tl-arrow { transition: transform 0.12s cubic-bezier(.22,.61,.36,1); }
+.tl-arrow { transition: transform 0.24s cubic-bezier(.22,.61,.36,1); }
 .tl-tile:hover .tl-open { color: var(--fav); }
 .tl-tile:hover .tl-arrow { transform: translateX(4px); }
 
@@ -348,8 +358,8 @@
   animation: tl-shimmer 1.5s linear infinite;
 }
 .tl-skel-line { height: 12px; }
-.tl-tile-skel { cursor: default; animation: tl-rise 0.12s ease both; }
-.tl-tile-skel:hover { transform: none; border-color: var(--line);  background: var(--surface); }
+.tl-tile-skel { cursor: default; animation: tl-rise 0.5s ease both; }
+.tl-tile-skel:hover { transform: none; border-color: var(--line); box-shadow: none; background: var(--surface); }
 .tl-tile-skel::before { display: none; }
 
 .tl-empty {
@@ -375,7 +385,7 @@
   border: 1px dashed var(--line); border-radius: 12px; background: none; cursor: pointer;
   font-family: Futura, "Century Gothic", sans-serif; font-size: 0.78rem; font-weight: 700;
   letter-spacing: 0.05em; color: var(--ink-2);
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color 0.18s ease, border-color 0.18s ease;
 }
 .tl-showall:hover { border-color: var(--pitch); border-style: solid; color: var(--pitch); }
 .tl-showall:focus-visible { outline: 2px solid var(--pitch); outline-offset: 2px; }
@@ -392,6 +402,6 @@
     animation: none !important;
   }
   .tl-spark-fav { stroke-dashoffset: 0; }
-  .tl-tile { transition: border-color 0.12s ease, background 0.12s ease; }
+  .tl-tile { transition: border-color 0.2s ease, background 0.2s ease; }
   .tl-tile:hover { transform: none; }
 }
