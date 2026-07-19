@@ -99,7 +99,7 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition-property: color, background-color, box-shadow, scale;
+  transition-property: color, background-color, border-color;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
@@ -108,7 +108,6 @@
   background: var(--surface);
   color: var(--ink);
   font-weight: 700;
-  box-shadow: var(--shadow-control, 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent));
 }
 .ktab:active { scale: 0.96; }
 .ktab .kicon { color: var(--ink-3); font-size: 0.82rem; filter: grayscale(1); }
@@ -145,7 +144,7 @@
   cursor: pointer;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition-property: color, background-color, box-shadow, scale;
+  transition-property: color, background-color, border-color;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
@@ -154,7 +153,6 @@
   background: var(--surface);
   color: var(--ink);
   font-weight: 700;
-  box-shadow: var(--shadow-control, 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent));
 }
 .picker .seg button:active { scale: 0.96; }
 .barrierbox {
@@ -419,7 +417,7 @@
   animation: actin 180ms ease-out;
 }
 .act-row:last-child { border-bottom: 0; }
-.act-row.you { background: color-mix(in srgb, var(--pitch) 6%, transparent); box-shadow: inset 2px 0 var(--pitch); }
+.act-row.you { background: color-mix(in srgb, var(--pitch) 6%, transparent);  }
 .act-who {
   min-width: 0;
   overflow: hidden;
@@ -504,3 +502,193 @@
   cursor: pointer;
 }
 .tk-x:hover { color: var(--crit); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Placement ticket (trading-terminal). The BettingPanel logic is unchanged;
+ * this is the terminal skin: question headline → big price/payout/to-win →
+ * contract + outcome + barrier scale → one bold green CTA → hedge/settle/feed.
+ * ════════════════════════════════════════════════════════════════════════ */
+.panel.bet.trading-ticket { padding: 0; }
+
+.tk2-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 18px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.tk2-hq { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.tk2-kindtag {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--ink-3);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.tk2-question {
+  margin: 0;
+  font-size: clamp(1.05rem, 3vw, 1.28rem);
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.tk2-hright { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; }
+.tk2-gatemsg {
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--crit) 9%, transparent);
+  color: var(--crit);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+
+.tk2-quote {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ground) 55%, var(--surface));
+}
+.tk2-qcell { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tk2-qk {
+  color: var(--ink-3);
+  font-size: 0.56rem;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.tk2-qv {
+  color: var(--ink);
+  font-size: clamp(1.35rem, 4.4vw, 1.85rem);
+  font-weight: 750;
+  line-height: 1;
+}
+.tk2-qcell.pay .tk2-qv, .tk2-qcell.win .tk2-qv {
+  color: var(--pitch);
+}
+.tk2-qsep { align-self: center; color: var(--ink-3); font-size: 1.1rem; text-align: center; }
+
+.tk2-decomp {
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
+.tk2-section { display: flex; flex-direction: column; gap: 9px; padding: 15px 18px 0; }
+.tk2-section:last-of-type { padding-bottom: 2px; }
+
+/* segmented outcome control (terminal padded-track) */
+.tk2-section .seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  overflow: visible;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--ground);
+}
+.tk2-section .seg button {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: color 150ms ease, background 150ms ease;
+}
+.tk2-section .seg button.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* the 0–100 barrier scale: live probability marker + gated / corridor zones */
+.tk2-scale {
+  position: relative;
+  height: 38px;
+  margin-top: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), color-mix(in srgb, var(--line) 60%, transparent) calc(10% - 1px) 10%),
+    var(--surface-2);
+  overflow: hidden;
+}
+.tk2-gz {
+  position: absolute; top: 0; bottom: 0;
+  background: color-mix(in srgb, var(--crit) 15%, transparent);
+  border-right: 1px dashed color-mix(in srgb, var(--crit) 55%, transparent);
+}
+.tk2-corridor {
+  position: absolute; top: 0; bottom: 0;
+  background: color-mix(in srgb, var(--pitch) 12%, transparent);
+}
+.tk2-prob { position: absolute; top: 0; bottom: 0; width: 0; transform: translateX(-0.5px); }
+.tk2-prob::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px;
+  background: var(--accent);
+}
+.tk2-prob-lab {
+  position: absolute; top: 3px; left: 5px;
+  color: var(--accent);
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.tk2-bm {
+  position: absolute; top: 0; bottom: 0; width: 0;
+}
+.tk2-bm::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px;
+  background: var(--ink);
+}
+.tk2-bm::after {
+  content: ""; position: absolute; bottom: 4px; left: -4px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--ink); border: 2px solid var(--surface-2);
+}
+.tk2-bm.lo::before, .tk2-bm.lo::after { background: var(--ink-2); }
+
+/* execution block: stake + one bold CTA + secondary actions */
+.tk2-exec {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-top: 16px;
+  padding: 15px 18px 18px;
+  border-top: 1px solid var(--line);
+}
+.tk2-exec .stakebox { grid-template-columns: auto minmax(0, 1fr) repeat(3, 44px); }
+.tk2-exec .stakebtn.place {
+  width: 100%;
+  min-height: 50px;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.tk2-subactions { display: flex; gap: 8px; }
+.tk2-subactions .btn2 { flex: 1; min-height: 42px; }
+
+@media (max-width: 560px) {
+  .tk2-head, .tk2-quote, .tk2-decomp, .tk2-section, .tk2-exec, .tk2-gatemsg { padding-inline: 14px; }
+  .tk2-quote { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tk2-qsep { display: none; }
+  .tk2-subactions { flex-direction: column; }
+}

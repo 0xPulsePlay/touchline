@@ -2,11 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type BetKind, type Calibration, type Fixture, type PathResponse, type Side } from "./api.js";
 import { BettingPanel } from "./betting/BettingPanel.js";
 import { TicketPanel } from "./betting/TicketPanel.js";
-import { flag } from "./flags.js";
 import { groupOf } from "./groups.js";
 import { AppBar } from "./AppBar.js";
 import { PathChart } from "./PathChart.js";
 import { buildScale } from "./timeline.js";
+import { navigate } from "./router.js";
+import { readTicket } from "./betting/ticket.js";
+import { ScoreboardHero } from "./market/ScoreboardHero.js";
+import { StatStrip } from "./market/StatStrip.js";
+import { MarketList } from "./market/MarketList.js";
+import { useTicketRoute, ticketHash, presetsFor, type MarketPreset } from "./market/marketRoute.js";
+import "./market/market.css";
 
 const fmtDay = (ts: number) =>
   new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
@@ -220,11 +226,68 @@ export function App({ fixtureId }: { fixtureId: number }) {
     return sel.isFinal ? `${sel.finalP1}–${sel.finalP2}` : "vs";
   })();
 
+  // ── market/ticket sub-route + pinned-chart compaction (additive; existing logic above is untouched) ──
+  const ticketSel = useTicketRoute(fixtureId);
+  const showTicket = !!ticketSel;
+  const ticketKey = ticketSel
+    ? `${ticketSel.kind}|${ticketSel.side}|${ticketSel.barrier}|${ticketSel.barrier2 ?? ""}|${ticketSel.line}`
+    : "";
+  useEffect(() => {
+    if (!ticketSel) return;
+    setKind(ticketSel.kind);
+    setSide(ticketSel.side);
+    setBarrier(ticketSel.barrier);
+    if (ticketSel.barrier2 !== undefined) setBarrier2(ticketSel.barrier2);
+    setLine(ticketSel.line);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketKey]);
+
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    let r = 0;
+    const on = () => { cancelAnimationFrame(r); r = requestAnimationFrame(() => setCompact(window.scrollY > 44)); };
+    window.addEventListener("scroll", on, { passive: true });
+    return () => { window.removeEventListener("scroll", on); cancelAnimationFrame(r); };
+  }, []);
+
+  const legCount = useMemo(() => readTicket().length, [ticketV]);
+
+  const pickMarket = (p: MarketPreset) => {
+    setKind(p.kind);
+    setSide(p.side);
+    setBarrier(p.barrier);
+    if (p.barrier2 !== undefined) setBarrier2(p.barrier2);
+    setLine(p.line ?? 0);
+    navigate(ticketHash(fixtureId, p));
+  };
+  const backToList = () => navigate(`#/m/${fixtureId}`);
+  const onParlay = () => {
+    if (legCount > 0) document.getElementById("tl-parlay")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    else pickMarket(presetsFor(false)[0]!);
+  };
+
+  // ── snapshot for the scoreboard hero + stat strip (derived from the current path edge) ──
+  const pts = pathRes?.path ?? [];
+  const lastPt = pts.length ? pts[pts.length - 1]! : null;
+  const movePt = pts.length > 8 ? pts[pts.length - 9]! : (pts[0] ?? null);
+  const win1 = lastPt ? lastPt.part1 : null;
+  const win2 = lastPt ? lastPt.part2 : null;
+  const winD = lastPt ? lastPt.draw : null;
+  const d1 = lastPt && movePt ? lastPt.part1 - movePt.part1 : null;
+  const d2 = lastPt && movePt ? lastPt.part2 - movePt.part2 : null;
+  const statusLabel = simUi ? "SIM MARKET" : awaitingFeed ? "PRE-MATCH"
+    : selGroup === "live" ? "LIVE MARKET" : sel?.isFinal ? "FULL TIME" : "SCHEDULED";
+  const kickoffLabel = sel ? `KICKOFF ${fmtDay(sel.startTime).toUpperCase()}` : "";
+  const heroClock = (simUi || isLive) ? liveEdgeLabel : (lastPt && clockLabel ? clockLabel(lastPt.ts) : "");
+  const heroScore = headScore === "vs" ? null : headScore.replace("–", " : ");
+  const heroLive = !!(simUi || (isLive && !awaitingFeed));
+  const focusSub = lastPt ? new Date(lastPt.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+
   return (
     <>
       <AppBar back />
 
-      <main className="main detail">
+      <main className="main detail tl-market">
         {!sel ? (
           err ? (
             <div className="empty">
@@ -236,33 +299,39 @@ export function App({ fixtureId }: { fixtureId: number }) {
           )
         ) : (
           <>
-            <div className="matchhead">
-              <span className="vs display">
-                {flag(sel.participant1)} {sel.participant1} {headScore} {sel.participant2} {flag(sel.participant2)}
-              </span>
-              <span className={`badge${sel.isFinal ? " ft" : selGroup === "live" && !awaitingFeed ? " live" : ""}`}>
-                {sel.isFinal ? "Full time" : awaitingFeed ? "Pre-match" : selGroup === "live" ? "Live" : "Scheduled"}
-              </span>
-              <span className="when">{fmtDay(sel.startTime)} · {sel.competition}</span>
-            </div>
+            {/* ── PINNED: scoreboard hero + stat strip + chart + controls ── */}
+            <div className={`tl-pinned${compact ? " compact" : ""}`}>
+              <ScoreboardHero
+                part1={sel.participant1}
+                part2={sel.participant2}
+                win1={win1}
+                win2={win2}
+                score={heroScore}
+                statusLabel={statusLabel}
+                kickoffLabel={kickoffLabel}
+                clockLabel={heroClock}
+                live={heroLive}
+                competition={sel.competition}
+                compact={compact}
+              />
 
-            <section className="panel">
-              <div className="panelhead">
-                <h2>Probability path</h2>
-                {(pathRes?.lines?.length ?? 0) > 1 && (
-                  <select className="linepick" value={line} aria-label="probability line"
-                    onChange={(e) => { setLine(Number(e.target.value)); setSide("part1"); }}>
-                    {pathRes!.lines!.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-                  </select>
-                )}
-                {sel.isFinal && !simUi && !noInPlayData && (
-                  <button className="simbtn" onClick={startSim} title="replay this match through the live pipeline">
-                    ⚡ Simulate live
-                  </button>
-                )}
-              </div>
-              {pathRes ? (
-                <>
+              {pathRes && lastPt && (
+                <StatStrip
+                  focusLabel={heroClock}
+                  focusSub={focusSub}
+                  name1={names.part1 || sel.participant1}
+                  name2={names.part2 || sel.participant2}
+                  v1={win1}
+                  v2={win2}
+                  vDraw={winD}
+                  d1={d1}
+                  d2={d2}
+                  showDraw={names.draw !== ""}
+                />
+              )}
+
+              <div className="tl-chartwrap">
+                {pathRes ? (
                   <PathChart
                     path={pathRes.path}
                     startTime={sel.startTime}
@@ -276,6 +345,13 @@ export function App({ fixtureId }: { fixtureId: number }) {
                     live={simUi || isLive ? { revealTs: revealTs ?? (pathRes.path[pathRes.path.length - 1]?.ts ?? sel.startTime) } : undefined}
                     preNote={preNote}
                   />
+                ) : (
+                  <div className="empty">Loading path…</div>
+                )}
+              </div>
+
+              {pathRes && (
+                <div className="tl-barrow">
                   {simUi || isLive ? (
                     <div className="livebar">
                       <span className={`livedot${awaitingFeed && !simUi ? " waiting" : ""}`} aria-hidden="true" />
@@ -314,58 +390,97 @@ export function App({ fixtureId }: { fixtureId: number }) {
                       </span>
                     </div>
                   )}
-                </>
-              ) : (
-                <div className="empty">Loading path…</div>
-              )}
-            </section>
 
-            <BettingPanel
-              fixture={sel}
-              side={side}
-              setSide={setSide}
-              kind={kind}
-              setKind={setKind}
-              barrier={barrier}
-              setBarrier={setBarrier}
-              barrier2={barrier2}
-              setBarrier2={setBarrier2}
-              names={names}
-              path={pathRes?.path}
-              revealTs={simUi || isLive ? (revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? null) : null}
-              simActive={!!simUi || isLive}
-              fullEndTs={fullEndRef.current}
-              onTicket={() => setTicketV((v) => v + 1)}
-              line={line}
-            />
-
-            <TicketPanel version={ticketV} onChanged={() => setTicketV((v) => v + 1)} />
-
-            <section className="panel">
-              <h2>Calibration</h2>
-              {cal ? (
-                <>
-                  <div className="calhead">
-                    <b>~87%</b> — how often real paths touch, as a share of the p/B bound
-                    ({cal.fixtures} matches, {cal.samples.length} paths).
-                  </div>
-                  {cal.buckets.filter((b) => b.n >= 30).map((b) => (
-                    <div className="calrow" key={b.barrier}>
-                      <span className="mono">{b.barrier}%</span>
-                      <div className="calbars">
-                        <div className="bound" style={{ width: `${b.meanBound * 100}%` }} />
-                        <div className="obs" style={{ width: `${b.observedRate * 100}%` }} />
-                      </div>
-                      <span className="mono" style={{ textAlign: "right" }}>
-                        {pct(b.observedRate, 0)} vs {pct(b.meanBound, 0)}
-                      </span>
+                  {((pathRes?.lines?.length ?? 0) > 1 || (sel.isFinal && !simUi && !noInPlayData)) && (
+                    <div className="tl-tools">
+                      {(pathRes?.lines?.length ?? 0) > 1 && (
+                        <select className="linepick" value={line} aria-label="probability line"
+                          onChange={(e) => { setLine(Number(e.target.value)); setSide("part1"); }}>
+                          {pathRes!.lines!.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                        </select>
+                      )}
+                      {sel.isFinal && !simUi && !noInPlayData && (
+                        <button className="simbtn" onClick={startSim} title="replay this match through the live pipeline">
+                          ⚡ Simulate live
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </>
-              ) : (
-                <div className="empty">Loading calibration…</div>
+                  )}
+                </div>
               )}
-            </section>
+            </div>
+
+            {/* ── SCROLLING BELOW: markets list ⇄ placement ticket ── */}
+            <div className="tl-below">
+              {!showTicket && (
+                <MarketList
+                  fixtureId={fixtureId}
+                  names={names}
+                  lines={pathRes?.lines}
+                  legCount={legCount}
+                  onPick={pickMarket}
+                  onParlay={onParlay}
+                />
+              )}
+
+              <div className={`tl-ticketwrap${showTicket ? "" : " is-hidden"}`}>
+                {showTicket && (
+                  <button className="tl-backmk" onClick={backToList}>
+                    <span aria-hidden="true">←</span> All markets
+                  </button>
+                )}
+                <BettingPanel
+                  fixture={sel}
+                  side={side}
+                  setSide={setSide}
+                  kind={kind}
+                  setKind={setKind}
+                  barrier={barrier}
+                  setBarrier={setBarrier}
+                  barrier2={barrier2}
+                  setBarrier2={setBarrier2}
+                  names={names}
+                  path={pathRes?.path}
+                  revealTs={simUi || isLive ? (revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? null) : null}
+                  simActive={!!simUi || isLive}
+                  fullEndTs={fullEndRef.current}
+                  onTicket={() => setTicketV((v) => v + 1)}
+                  line={line}
+                />
+              </div>
+
+              <div id="tl-parlay">
+                <TicketPanel version={ticketV} onChanged={() => setTicketV((v) => v + 1)} />
+              </div>
+
+              {!showTicket && (
+                <section className="panel calibration">
+                  <h2>Calibration</h2>
+                  {cal ? (
+                    <>
+                      <div className="calhead">
+                        <b>~87%</b> — how often real paths touch, as a share of the p/B bound
+                        ({cal.fixtures} matches, {cal.samples.length} paths).
+                      </div>
+                      {cal.buckets.filter((b) => b.n >= 30).map((b) => (
+                        <div className="calrow" key={b.barrier}>
+                          <span className="mono">{b.barrier}%</span>
+                          <div className="calbars">
+                            <div className="bound" style={{ width: `${b.meanBound * 100}%` }} />
+                            <div className="obs" style={{ width: `${b.observedRate * 100}%` }} />
+                          </div>
+                          <span className="mono" style={{ textAlign: "right" }}>
+                            {pct(b.observedRate, 0)} vs {pct(b.meanBound, 0)}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="empty">Loading calibration…</div>
+                  )}
+                </section>
+              )}
+            </div>
           </>
         )}
       </main>

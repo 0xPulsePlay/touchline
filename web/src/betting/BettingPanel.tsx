@@ -3,18 +3,11 @@ import { api, type ActivityBet, type BetKind, type ChainState, type DealerQuote,
 import { flag } from "../flags.js";
 import { sessionId } from "../session.js";
 import { addLeg } from "./ticket.js";
+import { KIND_META } from "./kinds.js";
 import "./betting.css";
 
 const usd = (n: number) => (n < 0 ? `−$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`);
 const pctBps = (b: number) => `${(b / 100).toFixed(1)}%`;
-
-const KIND_META: Record<BetKind, { icon: string; label: string; blurb: (name: string, U: number, L: number) => string }> = {
-  up: { icon: "↗", label: "Touch up", blurb: (n, U) => `${n} touches ${U}%?` },
-  down: { icon: "↘", label: "Touch down", blurb: (n, U) => `${n} drops to ${U}%?` },
-  band: { icon: "⇅", label: "Race", blurb: (n, U, L) => `${n} hits ${U}% before ${L}%?` },
-  heartbreak: { icon: "💔", label: "Heartbreak", blurb: (n, U) => `${n} touches ${U}% — and still loses?` },
-  comeback: { icon: "🔄", label: "Comeback", blurb: (n, U) => `${n} drops to ${U}% — and still wins?` },
-};
 
 const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
 const explorerAddr = (a: string, devnet = true) => `https://explorer.solana.com/address/${a}${devnet ? "?cluster=devnet" : ""}`;
@@ -186,23 +179,52 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
     return `p/B ${pctBps(quote.pBps)}/${barrier} = ${pctBps(quote.boundBps)} × ${quote.discount.toFixed(2)}`;
   };
 
+  // ── display-only derivations (no state change) ──
+  const toWin = quote?.valid ? Math.max(1, Math.min(cap, stake)) * quote.payoutMult : 0;
+  const curP = quote ? quote.pBps / 100 : null; // current probability on the 0–100 scale, for the marker
+
   return (
     <section className="panel bet trading-ticket">
-      <div className="bet-head">
-        <h2>Predict the path <span className="devnet">devnet</span></h2>
-        {bal !== null && <span className="mono balmini" title="session balance">{bal.toFixed(2)} <span className="tick">USDC</span></span>}
-      </div>
-
-      <div className="market-question">
-        <span className="ticket-label">Market question</span>
-        <div className="q-line">
-          <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{meta.blurb(sideName, barrier, barrier2)}</b></span>
-          {quote && !quote.valid && <span className="gate">{quote.reason}</span>}
+      {/* headline: the market question */}
+      <div className="tk2-head">
+        <div className="tk2-hq">
+          <span className="tk2-kindtag mono">{meta.icon} {meta.label}</span>
+          <h2 className="tk2-question">
+            {side === "draw" ? "🤝" : flag(sideName)} {meta.blurb(sideName, barrier, barrier2)}
+          </h2>
+        </div>
+        <div className="tk2-hright">
+          {bal !== null && <span className="mono balmini" title="session balance">{bal.toFixed(2)} <span className="tick">USDC</span></span>}
+          <span className="devnet">devnet</span>
         </div>
       </div>
+      {quote && !quote.valid && <div className="tk2-gatemsg mono">◇ {quote.reason}</div>}
 
-      {/* the five instruments */}
-      <div className="instrument-picker">
+      {/* big price → payout → to-win */}
+      <div className="tk2-quote">
+        <div className="tk2-qcell">
+          <span className="tk2-qk">House price</span>
+          <span className="tk2-qv mono">{quote?.valid ? pctBps(quote.priceBps) : "—"}</span>
+        </div>
+        <span className="tk2-qsep" aria-hidden="true">→</span>
+        <div className="tk2-qcell pay">
+          <span className="tk2-qk">Payout</span>
+          <span className="tk2-qv mono">{quote?.valid ? `${quote.payoutMult.toFixed(2)}×` : "—"}</span>
+        </div>
+        <div className="tk2-qcell win">
+          <span className="tk2-qk">To win ${Math.max(1, Math.min(cap, stake))}</span>
+          <span className="tk2-qv mono">{quote?.valid ? usd(toWin) : "—"}</span>
+        </div>
+      </div>
+      {quote?.valid && (
+        <div className="tk2-decomp mono">
+          {decomp()}
+          <a className="q-paper" href="#/paper"> · how?</a>
+        </div>
+      )}
+
+      {/* contract type */}
+      <div className="tk2-section">
         <span className="ticket-label">Contract type</span>
         <div className="kindtabs" role="tablist" aria-label="market type">
           {(Object.keys(KIND_META) as BetKind[]).map((k) => (
@@ -213,15 +235,34 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
         </div>
       </div>
 
-      {/* side + barrier(s) */}
-      <div className="picker">
-        <span className="ticket-label">Outcome and barrier</span>
+      {/* side */}
+      <div className="tk2-section">
+        <span className="ticket-label">Outcome</span>
         <div className="seg" role="group" aria-label="side">
           {(["part1", "draw", "part2"] as Side[]).filter((k) => names[k] !== "").map((k) => (
             <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
               {k === "draw" ? "🤝 Draw" : line > 0 ? names[k] : `${flag(names[k])} ${names[k]}`}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* barrier(s), with the live probability + gated zone marked on a 0–100 scale */}
+      <div className="tk2-section">
+        <span className="ticket-label">{kind === "band" ? "Barriers" : "Barrier"}</span>
+        <div className="tk2-scale" aria-hidden="true">
+          {upKind && minBar > 0 && <div className="tk2-gz" style={{ left: 0, width: `${Math.min(100, minBar)}%` }} />}
+          {(kind === "down" || kind === "comeback") && maxDown < 100 && <div className="tk2-gz" style={{ left: `${maxDown}%`, right: 0 }} />}
+          {kind === "band" && (
+            <div className="tk2-corridor" style={{ left: `${Math.min(barrier, barrier2)}%`, width: `${Math.abs(barrier - barrier2)}%` }} />
+          )}
+          {curP !== null && (
+            <span className="tk2-prob" style={{ left: `${Math.max(0, Math.min(100, curP))}%` }}>
+              <span className="tk2-prob-lab mono">P {curP.toFixed(0)}%</span>
+            </span>
+          )}
+          <span className="tk2-bm" style={{ left: `${Math.max(0, Math.min(100, barrier))}%` }} />
+          {kind === "band" && <span className="tk2-bm lo" style={{ left: `${Math.max(0, Math.min(100, barrier2))}%` }} />}
         </div>
         <div className="barrierbox">
           <span className="mono blabel">{kind === "band" ? "upper" : kind === "down" || kind === "comeback" ? "drops to" : "touches"}</span>
@@ -244,45 +285,33 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
         )}
       </div>
 
-      <div className="quote-card">
-        {quote?.valid && (
-          <div className="q-body">
-            <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
-            <div className="q-arrow">→</div>
-            <div className="q-payout"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it hits</span></div>
-            <div className="q-decomp mono">
-              {decomp()}
-              <a className="q-paper" href="#/paper"> · how?</a>
-            </div>
-          </div>
-        )}
-        <div className="bet-actions">
-          <div className="stakebox">
-            <span className="mono blabel">stake</span>
-            <input className="stakein mono" type="number" min={1} max={cap} step={1} value={stake}
-              onChange={(e) => setStake(Math.max(1, Math.min(cap, Number(e.target.value) || 1)))} aria-label="stake in USDC" />
-            {[2, 5, 10].map((v) => (
-              <button key={v} className={`chip${stake === v ? " on" : ""}`} onClick={() => setStake(v)}>${v}</button>
-            ))}
-          </div>
-          <div className="execution-actions">
-            <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
-              {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
-            </button>
-            <button className="btn2" disabled={!quote?.valid} title="add this selection to the parlay ticket"
-              onClick={() => {
-                addLeg({
-                  fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
-                  side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
-                });
-                onTicket?.();
-              }}>
-              ＋ Parlay leg
-            </button>
-            {lastBet.current && !settled && !simActive && (
-              <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
-            )}
-          </div>
+      {/* stake + one bold CTA */}
+      <div className="tk2-exec">
+        <div className="stakebox">
+          <span className="mono blabel">stake</span>
+          <input className="stakein mono" type="number" min={1} max={cap} step={1} value={stake}
+            onChange={(e) => setStake(Math.max(1, Math.min(cap, Number(e.target.value) || 1)))} aria-label="stake in USDC" />
+          {[2, 5, 10].map((v) => (
+            <button key={v} className={`chip${stake === v ? " on" : ""}`} onClick={() => setStake(v)}>${v}</button>
+          ))}
+        </div>
+        <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
+          {busy === "bet" ? "CONFIRMING…" : "PLACE PREDICTION"}
+        </button>
+        <div className="tk2-subactions">
+          <button className="btn2" disabled={!quote?.valid} title="add this selection to the parlay ticket"
+            onClick={() => {
+              addLeg({
+                fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
+                side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
+              });
+              onTicket?.();
+            }}>
+            ＋ Parlay leg
+          </button>
+          {lastBet.current && !settled && !simActive && (
+            <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
+          )}
         </div>
         {quote?.valid && (bal ?? 0) < stake && busy !== "bet" && (
           <div className="bet-hint">Balance too low — grab devnet funds from the <b>wallet</b> in the top bar.</div>
