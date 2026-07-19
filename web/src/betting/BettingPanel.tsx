@@ -61,18 +61,23 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
 
   // quote follows kind/side/barriers (gated on the server); re-polls so a transient API
   // hiccup can't leave the panel stuck quoteless with a dead button
-  // during sim/live the quote re-prices off the CURRENT probability (the reveal edge), bucketed
-  // to ~4s so the tween doesn't spam the API; browsing without a sim prices the pre-match book
-  const asOfBucket = simActive && revealTs != null ? Math.floor(revealTs / 4000) * 4000 : undefined;
+  // during sim/live the quote re-prices off the CURRENT probability (the reveal edge). The edge is
+  // read from a ref at fetch time and polled on REAL time (4s in sim, 15s browsing) — deriving an
+  // effect key from revealTs would re-fire ~45×/s during the tween (match-time moves at 180×) and
+  // storm the API, which is exactly the glitch it caused.
+  const revealRef = useRef<number | null>(null);
+  revealRef.current = revealTs ?? null;
   useEffect(() => {
     let dead = false;
-    const fetchQuote = () =>
-      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined, line, asOfBucket)
+    const fetchQuote = () => {
+      const asOf = simActive && revealRef.current != null ? revealRef.current : undefined;
+      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined, line, asOf)
         .then((q) => !dead && setQuote(q)).catch(() => {});
+    };
     void fetchQuote();
-    const id = setInterval(fetchQuote, 15_000);
+    const id = setInterval(fetchQuote, simActive ? 4000 : 15_000);
     return () => { dead = true; clearInterval(id); };
-  }, [fixture.fixtureId, side, barrier, barrier2, kind, line, asOfBucket]);
+  }, [fixture.fixtureId, side, barrier, barrier2, kind, line, simActive]);
 
   // activity feed polls — scoped to the selected kind
   useEffect(() => {
@@ -112,7 +117,7 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
     setBusy("bet"); setSettled(null);
     setMsg({ kind: "ok", text: "Confirming on devnet: co-signing + escrowing the payout…" });
     try {
-      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt, line, asOf: asOfBucket });
+      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt, line, asOf: simActive && revealRef.current != null ? revealRef.current : undefined });
       lastBet.current = { sig: r.sig, marketKey: r.marketKey, kind, side, barrier, barrier2 };
       setMsg({ kind: "ok", text: `Position live on-chain: ${usd(r.amountUsdc)} → ${usd(r.payoutUsdc)} if it hits.` });
       refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
