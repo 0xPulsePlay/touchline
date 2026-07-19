@@ -3,6 +3,7 @@ import { api, type ActivityBet, type BetKind, type ChainState, type DealerQuote,
 import { flag } from "../flags.js";
 import { sessionId } from "../session.js";
 import { addLeg } from "./ticket.js";
+import { liveP, quoteLocal } from "../pricing.js";
 import "./betting.css";
 
 const usd = (n: number) => (n < 0 ? `−$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`);
@@ -75,7 +76,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
         .then((q) => !dead && setQuote(q)).catch(() => {});
     };
     void fetchQuote();
-    const id = setInterval(fetchQuote, simActive ? 4000 : 15_000);
+    const id = setInterval(fetchQuote, 15_000);
     return () => { dead = true; clearInterval(id); };
   }, [fixture.fixtureId, side, barrier, barrier2, kind, line, simActive]);
 
@@ -99,12 +100,22 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
     return () => clearInterval(id);
   }, [refreshTreasury, treasury?.marketKey]);
 
+  // DISPLAY pricing: during sim/live the slip re-prices locally from the same revealed path that
+  // drives the chart (zero network, lockstep with the line); the server quote is the periodic
+  // truth-sync + discount source, and remains authoritative at placement.
+  const displayQuote = useMemo(() => {
+    if (!simActive) return quote;
+    const p = liveP(path, side, revealTs ?? null);
+    if (p == null) return quote;
+    return quoteLocal(kind, side, p, barrier, barrier2, quote?.discount ?? 0.869);
+  }, [simActive, quote, path, side, revealTs, kind, barrier, barrier2]);
+
   // slider ranges per kind
-  const minBar = quote ? Math.ceil(quote.minBarrierBps / 100) : 5;
-  const maxDown = quote?.maxDownBps !== undefined ? Math.floor(quote.maxDownBps / 100) : 95;
+  const minBar = displayQuote ? Math.ceil(displayQuote.minBarrierBps / 100) : 5;
+  const maxDown = displayQuote?.maxDownBps !== undefined ? Math.floor(displayQuote.maxDownBps / 100) : 95;
   const upKind = kind === "up" || kind === "heartbreak" || kind === "band";
   useEffect(() => {
-    if (!quote) return;
+    if (!displayQuote) return;
     if (upKind && barrier < minBar) setBarrier(minBar);
     if ((kind === "down" || kind === "comeback") && barrier > maxDown) setBarrier(Math.max(1, maxDown));
     if (kind === "band" && barrier2 > maxDown) setBarrier2(Math.max(1, maxDown));
@@ -112,7 +123,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
   }, [minBar, maxDown, kind]);
 
   const placeBet = async () => {
-    if (!quote?.valid) { setMsg({ kind: "err", text: quote?.reason ?? "invalid barrier" }); return; }
+    if (!displayQuote?.valid) { setMsg({ kind: "err", text: displayQuote?.reason ?? "invalid barrier" }); return; }
     const usdcAmt = Math.max(1, Math.min(cap, stake));
     setBusy("bet"); setSettled(null);
     setMsg({ kind: "ok", text: "Confirming on devnet: co-signing + escrowing the payout…" });
@@ -187,6 +198,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
   const meta = KIND_META[kind];
 
   const decomp = () => {
+    const quote = displayQuote;
     if (!quote?.valid) return null;
     if (kind === "band") return `(p−L)/(U−L) = (${pctBps(quote.pBps)}−${barrier2})/(${barrier}−${barrier2}) · exact`;
     if (kind === "down" || kind === "comeback") return `(1−p)/(1−B) ${kind === "comeback" ? "× A " : ""}× ${quote.discount.toFixed(2)}`;
@@ -205,7 +217,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
         <span className="ticket-label">Market question</span>
         <div className="q-line">
           <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{meta.blurb(sideName, barrier, barrier2)}</b></span>
-          {quote && !quote.valid && <span className="gate">{quote.reason}</span>}
+          {displayQuote && !displayQuote.valid && <span className="gate">{displayQuote.reason}</span>}
         </div>
       </div>
 
@@ -252,11 +264,11 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
       </div>
 
       <div className="quote-card">
-        {quote?.valid && (
+        {displayQuote?.valid && (
           <>
             <div className="q-row">
-              <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
-              <div className="q-payout right"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it hits</span></div>
+              <div className="q-price"><span className="big mono">{pctBps(displayQuote.priceBps)}</span><span className="q-sub">house price</span></div>
+              <div className="q-payout right"><span className="big mono">{displayQuote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it hits</span></div>
             </div>
             <div className="q-decomp mono">
               {decomp()}
@@ -275,14 +287,14 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
               ))}
               <button className={stake === cap ? "on" : ""} onClick={() => setStake(cap)}>Max</button>
             </div>
-            {quote?.valid && <span className="towin mono">to win {usd(stake * quote.payoutMult)}</span>}
+            {displayQuote?.valid && <span className="towin mono">to win {usd(stake * displayQuote.payoutMult)}</span>}
           </div>
         </div>
-        <button className="stakebtn place cta" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
+        <button className="stakebtn place cta" disabled={!displayQuote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
           {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
         </button>
         <div className="secondary-actions">
-          <button className="btn2 wide" disabled={!quote?.valid} title="add this selection to the parlay ticket"
+          <button className="btn2 wide" disabled={!displayQuote?.valid} title="add this selection to the parlay ticket"
             onClick={() => {
               addLeg({
                 fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
@@ -296,7 +308,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
             <button className="btn2 settle wide" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
           )}
         </div>
-        {quote?.valid && (bal ?? 0) < stake && busy !== "bet" && (
+        {displayQuote?.valid && (bal ?? 0) < stake && busy !== "bet" && (
           <div className="bet-hint">Balance too low. Grab devnet funds from the <b>wallet</b> in the top bar.</div>
         )}
         {msg && <div className={`bet-msg ${msg.kind}`}>{msg.text}</div>}
