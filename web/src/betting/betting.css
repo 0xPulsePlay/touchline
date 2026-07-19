@@ -120,3 +120,13 @@
 .act-who { font-weight: 600; }
 .act-odds { color: var(--ink-3); }
 .dim { color: var(--ink-3); font-style: italic; font-size: 0.85rem; }
+
+/* parlay ticket */
+.panel.ticket { border-color: var(--accent); }
+.tk-legs { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.tk-leg { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 8px 12px; border: 1px solid var(--line-soft); border-radius: 8px; font-size: 0.84rem; }
+.tk-what { font-weight: 600; }
+.tk-fix { color: var(--ink-3); font-size: 0.74rem; }
+.tk-x { border: none; background: none; color: var(--ink-3); font-size: 1.1rem; cursor: pointer; padding: 0 4px; }
+.tk-x:hover { color: var(--crit); }

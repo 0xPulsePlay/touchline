@@ -37,6 +37,14 @@ export const betPda = (market: PublicKey, user: PublicKey, nonce: number) => {
   )[0];
 };
 
+export const parlayPda = (user: PublicKey, nonce: number) => {
+  const n = Buffer.alloc(8); n.writeBigUInt64LE(BigInt(nonce));
+  return PublicKey.findProgramAddressSync([enc("parlay"), user.toBuffer(), n], PROGRAM_ID)[0];
+};
+
+export const parlayVaultPda = (parlay: PublicKey) =>
+  PublicKey.findProgramAddressSync([enc("pvault"), parlay.toBuffer()], PROGRAM_ID)[0];
+
 export { PROGRAM_ID, TOKEN_PROGRAM_ID, SystemProgram, BN, PublicKey };
 
 /** Pad a MessageId string into the fixed [u8;48] the program stores as evidence. */

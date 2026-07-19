@@ -5,7 +5,7 @@ import { Connection, Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 
 import { connection, houseKeypair, DATA_DIR } from "./config.js";
 import { ensureChainSetup, ensureAta, faucetMint, tokenBalance, readChainState, BET_CAP, USDC_DECIMALS } from "./tokens.js";
-import { loadProgram, configPda, marketPda, vaultPda, betPda, messageIdBytes, TOKEN_PROGRAM_ID, BN } from "./program.js";
+import { loadProgram, configPda, marketPda, vaultPda, betPda, parlayPda, parlayVaultPda, messageIdBytes, TOKEN_PROGRAM_ID, BN } from "./program.js";
 import { ensureWallet, fundSol, getWallet, type SessionWallet } from "./wallets.js";
 import { recordHedge } from "./hedge.js";
 import { KIND_IDX, type BetKind } from "../dealer.js";
@@ -29,6 +29,19 @@ export const sideCode = (_kind: BetKind, side: Side): number => SIDE_IDX[side];
 export const chainFid = (fixtureId: number, line = 0, epoch = 0, kind: BetKind = "up"): number =>
   fixtureId + line * 2 ** 32 + epoch * 2 ** 40 + KIND_IDX[kind] * 2 ** 48;
 
+/**
+ * Mint era: a byte derived from the current mock-USDC mint, folded into the epoch bits. A fresh
+ * chain setup (new mint) automatically gets fresh market PDAs — old-era on-chain markets (older
+ * mints, expired cutoffs) can never collide with today's demo. User-supplied epoch bumps on top
+ * (re-runnable markets).
+ */
+function mintEra(): number {
+  const s = readChainState();
+  if (!s) return 0;
+  return new PublicKey(s.usdcMint).toBytes()[0] ?? 0;
+}
+export const effectiveEpoch = (epoch = 0): number => (mintEra() + epoch) & 0xff;
+
 export interface MarketOpts { kind?: BetKind; barrier2Bps?: number; line?: number; epoch?: number }
 
 export interface LedgerMarket {
@@ -41,7 +54,13 @@ export interface LedgerBet {
   amount: number; priceBps: number; payout: number; ts: number; claimed: boolean;
   kind?: BetKind; barrier2Bps?: number; line?: number;
 }
-interface Ledger { markets: LedgerMarket[]; bets: LedgerBet[] }
+export interface ParlayLeg { marketKey: string; fixtureId: number; side: Side; kind: BetKind; barrierBps: number; barrier2Bps?: number; priceBps: number }
+export interface LedgerParlay {
+  key: string; sig: string; sessionId: string; label: string; bettor: string; nonce: number;
+  legs: ParlayLeg[]; amount: number; priceBps: number; payout: number; ts: number;
+  claimed: boolean; outcome?: "yes" | "no";
+}
+interface Ledger { markets: LedgerMarket[]; bets: LedgerBet[]; parlays?: LedgerParlay[] }
 
 function loadLedger(): Ledger {
   try { return JSON.parse(readFileSync(LEDGER, "utf8")) as Ledger; } catch { return { markets: [], bets: [] }; }
@@ -114,7 +133,7 @@ export async function ensureMarket(
   const { program } = loadProgram(c, house);
   const kind = mOpts.kind ?? "up";
   const line = mOpts.line ?? 0;
-  const epoch = mOpts.epoch ?? 0;
+  const epoch = effectiveEpoch(mOpts.epoch ?? 0); // mint-era folded in — no cross-era PDA reuse
   const code = sideCode(kind, side);
   const fid = chainFid(fixtureId, line, epoch, kind);
   const market = marketPda(fid, code, barrierBps);
@@ -240,6 +259,95 @@ function sessionIdForBettor(pubkey: string): string {
 import { listWallets } from "./wallets.js";
 function listWalletsByPubkey(pubkey: string): string | undefined {
   return listWallets().find((w) => w.keypair.publicKey.toBase58() === pubkey)?.id;
+}
+
+// ── parlays ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Place a co-signed parlay across 2–4 legs. Each leg's market is ensured on-chain first. */
+export async function placeParlay(
+  sessionId: string, label: string,
+  legs: { fixtureId: number; side: Side; kind: BetKind; barrierBps: number; barrier2Bps?: number; priceBps: number }[],
+  amountUnits: number, combinedPriceBps: number, cutoffTs: number, conn?: Connection,
+): Promise<LedgerParlay> {
+  const c = conn ?? connection();
+  const { usdcMint } = await ensureReady(c);
+  const house = houseKeypair();
+  const w = await ensureWallet(sessionId, label, {}, c);
+  await fundSol(w.keypair.publicKey, Math.floor(0.05 * 1e9), c);
+
+  const legKeys: string[] = [];
+  for (const leg of legs) {
+    legKeys.push(await ensureMarket(leg.fixtureId, leg.side, leg.barrierBps, cutoffTs,
+      { kind: leg.kind, barrier2Bps: leg.barrier2Bps }, c));
+  }
+
+  const nonce = Date.now();
+  const parlay = parlayPda(w.keypair.publicKey, nonce);
+  const vault = parlayVaultPda(parlay);
+  const userAta = await ensureAta(c, usdcMint, w.keypair.publicKey);
+  const houseAta = await ensureAta(c, usdcMint, house.publicKey);
+  const payout = Math.floor((amountUnits * 10000) / combinedPriceBps);
+
+  const { program } = loadProgram(c, house);
+  const sig = await program.methods.placeParlay(new BN(nonce), new BN(amountUnits), combinedPriceBps, legs.length)
+    .accounts({
+      user: w.keypair.publicKey, house: house.publicKey, config: configPda(), mint: usdcMint,
+      parlay, vault, userToken: userAta, houseToken: houseAta,
+      tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
+      rent: new PublicKey("SysvarRent111111111111111111111111111111111"),
+    })
+    .remainingAccounts(legKeys.map((k) => ({ pubkey: new PublicKey(k), isWritable: false, isSigner: false })))
+    .signers([w.keypair, house]).rpc();
+
+  const rec: LedgerParlay = {
+    key: parlay.toBase58(), sig, sessionId, label, bettor: w.keypair.publicKey.toBase58(), nonce,
+    legs: legs.map((l, i) => ({ marketKey: legKeys[i]!, fixtureId: l.fixtureId, side: l.side, kind: l.kind, barrierBps: l.barrierBps, barrier2Bps: l.barrier2Bps, priceBps: l.priceBps })),
+    amount: amountUnits, priceBps: combinedPriceBps, payout, ts: Date.now(), claimed: false,
+  };
+  ledger.parlays = ledger.parlays ?? [];
+  ledger.parlays.push(rec);
+  saveLedger(ledger);
+
+  // rolling hedge: the first leg carries the ticket's live exposure (documented approximation —
+  // each touch rolls the position into the next leg)
+  const first = rec.legs[0]!;
+  recordHedge({
+    marketKey: first.marketKey, betSig: sig, side: first.side, barrierBps: first.barrierBps,
+    stakeUsdc: amountUnits / 1e6, payoutUsdc: (amountUnits / 1e6) * (10000 / first.priceBps),
+    venueP: Math.max(0.01, Math.min(0.99, (first.priceBps / 10000) * (first.barrierBps / 10000) / 0.87)),
+    kind: first.kind, barrier2Bps: first.barrier2Bps, venue: "parlay-rolling",
+  });
+  return rec;
+}
+
+/** Claim a parlay once every leg market is resolved on-chain. */
+export async function claimParlay(rec: LedgerParlay, conn?: Connection): Promise<{ sig: string; allYes: boolean }> {
+  const c = conn ?? connection();
+  const state = readChainState()!;
+  const house = houseKeypair();
+  const allYes = rec.legs.every((l) => ledger.markets.find((m) => m.key === l.marketKey)?.status === "yes");
+  const winnerOwner = allYes ? new PublicKey(rec.bettor) : house.publicKey;
+  const winnerAta = await ensureAta(c, new PublicKey(state.usdcMint), winnerOwner);
+  const w = getWallet(rec.sessionId);
+  const claimant = w?.keypair ?? house;
+  const parlay = new PublicKey(rec.key);
+  const { program } = loadProgram(c, house);
+  const sig = await program.methods.claimParlay()
+    .accounts({
+      claimant: claimant.publicKey, parlay, vault: parlayVaultPda(parlay),
+      winnerToken: winnerAta, tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .remainingAccounts(rec.legs.map((l) => ({ pubkey: new PublicKey(l.marketKey), isWritable: false, isSigner: false })))
+    .signers([claimant]).rpc();
+  rec.claimed = true;
+  rec.outcome = allYes ? "yes" : "no";
+  saveLedger(ledger);
+  return { sig, allYes };
+}
+
+export function listParlays(sessionId?: string): LedgerParlay[] {
+  const all = ledger.parlays ?? [];
+  return sessionId ? all.filter((p) => p.sessionId === sessionId) : all;
 }
 
 export { SIDE_IDX };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type BetKind, type Calibration, type Fixture, type PathResponse, type Side } from "./api.js";
 import { BettingPanel } from "./betting/BettingPanel.js";
+import { TicketPanel } from "./betting/TicketPanel.js";
 import { flag } from "./flags.js";
 import { groupOf } from "./groups.js";
 import { AppBar } from "./AppBar.js";
@@ -24,6 +25,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
   const [kind, setKind] = useState<BetKind>("up");
   const [barrier, setBarrier] = useState(60);
   const [barrier2, setBarrier2] = useState(20);
+  const [ticketV, setTicketV] = useState(0);
   const [cal, setCal] = useState<Calibration | null>(null);
   const [cursor, setCursor] = useState(1e9);
   const [playing, setPlaying] = useState(false);
@@ -322,7 +324,10 @@ export function App({ fixtureId }: { fixtureId: number }) {
               revealTs={simUi || isLive ? (revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? null) : null}
               simActive={!!simUi || isLive}
               fullEndTs={fullEndRef.current}
+              onTicket={() => setTicketV((v) => v + 1)}
             />
+
+            <TicketPanel version={ticketV} onChanged={() => setTicketV((v) => v + 1)} />
 
             <section className="panel">
               <h2>Calibration</h2>

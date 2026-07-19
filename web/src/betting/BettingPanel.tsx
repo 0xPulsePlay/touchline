@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ActivityBet, type BetKind, type ChainState, type DealerQuote, type Fixture, type PathPoint, type ResolveResult, type Side, type Treasury } from "../api.js";
 import { flag } from "../flags.js";
 import { sessionId } from "../session.js";
+import { addLeg } from "./ticket.js";
 import "./betting.css";
 
 const usd = (n: number) => (n < 0 ? `−$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`);
@@ -32,9 +33,11 @@ export interface BettingPanelProps {
   /** the FULL match's last tick ts — the sim path is asOf-truncated, so heartbreak/comeback
    *  must compare the reveal edge against this, not the truncated path's end */
   fullEndTs?: number | null;
+  /** notify the parlay ticket that a leg was added */
+  onTicket?: () => void;
 }
 
-export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs }: BettingPanelProps) {
+export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs, onTicket }: BettingPanelProps) {
   const sid = sessionId();
   const [chain, setChain] = useState<ChainState | null>(null);
   const [bal, setBal] = useState<number | null>(null);
@@ -254,6 +257,16 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
           </div>
           <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
             {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
+          </button>
+          <button className="btn2" disabled={!quote?.valid} title="add this selection to the parlay ticket"
+            onClick={() => {
+              addLeg({
+                fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
+                side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
+              });
+              onTicket?.();
+            }}>
+            ＋ Parlay leg
           </button>
           {lastBet.current && !settled && !simActive && (
             <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>

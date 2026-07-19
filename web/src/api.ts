@@ -157,7 +157,24 @@ export const api = {
   activity: () => fetch("/api/activity").then((r) => j<ActivityBet[]>(r)),
   onchainMarkets: (fixtureId: number) => fetch(`/api/onchain/markets?fixtureId=${fixtureId}`).then((r) => j<OnchainMarket[]>(r)),
   treasury: (marketKey: string) => fetch(`/api/treasury/${marketKey}`).then((r) => j<Treasury>(r)),
+
+  // ── parlays ──────────────────────────────────────────────────────────────
+  parlayQuote: (legs: ParlayLegInput[]) =>
+    fetch("/api/parlay/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ legs }) }).then((r) => j<ParlayQuote>(r)),
+  placeParlay: (b: { sessionId: string; label: string; usdc: number; legs: ParlayLegInput[] }) =>
+    fetch("/api/parlay", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<ParlayResult>(r)),
+  claimParlay: (key: string) => fetch(`/api/parlay/${key}/claim`, { method: "POST" }).then((r) => j<{ sig: string; outcome: "yes" | "no"; payoutUsdc: number }>(r)),
 };
+
+export interface ParlayLegInput { fixtureId: number; side: Side; kind?: BetKind; barrier: number; barrier2?: number }
+export interface ParlayQuote {
+  legs: { fixtureId: number; side: Side; kind: BetKind; barrierBps: number; barrier2Bps?: number; priceBps: number }[];
+  combinedPriceBps: number; payoutMult: number; error?: string;
+}
+export interface ParlayResult {
+  key: string; sig: string; priceBps: number; payoutMult: number; amountUsdc: number; payoutUsdc: number;
+  legs: { marketKey: string; fixtureId: number; side: Side; kind: BetKind; barrierBps: number; priceBps: number }[];
+}
 
 export interface Treasury {
   marketKey: string; barrierBps: number; bets: number; shares: number;

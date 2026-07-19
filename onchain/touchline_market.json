@@ -100,6 +100,91 @@
       "args": []
     },
     {
+      "name": "claim_parlay",
+      "docs": [
+        "Claim a parlay after every leg is resolved (legs as remaining accounts, in stored order).",
+        "ALL legs YES → the user claims the payout; ANY leg NO → the house claims it back."
+      ],
+      "discriminator": [
+        47,
+        40,
+        30,
+        204,
+        201,
+        172,
+        97,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "claimant",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "parlay",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  114,
+                  108,
+                  97,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "parlay.user",
+                "account": "Parlay"
+              },
+              {
+                "kind": "account",
+                "path": "parlay.nonce",
+                "account": "Parlay"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "parlay"
+              }
+            ]
+          }
+        },
+        {
+          "name": "winner_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "create_market",
       "docs": [
         "Open a barrier market. `side`: 0=part1, 1=draw, 2=part2. `barrier_bps`: e.g. 6000 = 60%.",
@@ -378,6 +463,149 @@
       ]
     },
     {
+      "name": "place_parlay",
+      "docs": [
+        "Place a PARLAY: one stake across 2–4 leg markets (passed as remaining accounts), combined",
+        "price = the product of leg prices (computed by the dealer, co-signed like place_bet).",
+        "Fully collateralized: the parlay vault holds the entire payout at placement. Pays out only",
+        "if EVERY leg resolves YES; any NO leg forfeits to the house."
+      ],
+      "discriminator": [
+        205,
+        82,
+        209,
+        90,
+        228,
+        10,
+        86,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "house",
+          "docs": [
+            "the dealer co-signs — gates the combined price and the cap"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "parlay",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  114,
+                  108,
+                  97,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "parlay"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_token",
+          "writable": true
+        },
+        {
+          "name": "house_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "price_bps",
+          "type": "u16"
+        },
+        {
+          "name": "leg_count",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "resolve",
       "docs": [
         "Resolve the market (resolver authority only). `outcome`: true = YES (barrier touched).",
@@ -528,6 +756,19 @@
         198,
         154
       ]
+    },
+    {
+      "name": "Parlay",
+      "discriminator": [
+        122,
+        11,
+        112,
+        152,
+        79,
+        17,
+        172,
+        36
+      ]
     }
   ],
   "events": [
@@ -555,6 +796,32 @@
         150,
         248,
         33
+      ]
+    },
+    {
+      "name": "ParlayClaimed",
+      "discriminator": [
+        56,
+        158,
+        46,
+        185,
+        146,
+        91,
+        152,
+        111
+      ]
+    },
+    {
+      "name": "ParlayPlaced",
+      "discriminator": [
+        201,
+        205,
+        131,
+        219,
+        13,
+        107,
+        101,
+        71
       ]
     },
     {
@@ -651,6 +918,16 @@
       "code": 6015,
       "name": "NotWinner",
       "msg": "token account owner is not the winning side"
+    },
+    {
+      "code": 6016,
+      "name": "BadLegCount",
+      "msg": "parlay needs 2-4 legs"
+    },
+    {
+      "code": 6017,
+      "name": "LegMismatch",
+      "msg": "leg account does not match the parlay"
     }
   ],
   "types": [
@@ -894,6 +1171,127 @@
                 "name": "Evidence"
               }
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Parlay",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "house",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "price_bps",
+            "type": "u16"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "leg_count",
+            "type": "u8"
+          },
+          {
+            "name": "legs",
+            "type": {
+              "array": [
+                "pubkey",
+                4
+              ]
+            }
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ParlayClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "parlay",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "all_yes",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ParlayPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "parlay",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "price_bps",
+            "type": "u16"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "leg_count",
+            "type": "u8"
           }
         ]
       }

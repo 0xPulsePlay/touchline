@@ -155,6 +155,120 @@ pub mod touchline_market {
         Ok(())
     }
 
+    /// Place a PARLAY: one stake across 2–4 leg markets (passed as remaining accounts), combined
+    /// price = the product of leg prices (computed by the dealer, co-signed like place_bet).
+    /// Fully collateralized: the parlay vault holds the entire payout at placement. Pays out only
+    /// if EVERY leg resolves YES; any NO leg forfeits to the house.
+    pub fn place_parlay(ctx: Context<PlaceParlay>, nonce: u64, amount: u64, price_bps: u16, leg_count: u8) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        require!(leg_count >= 2 && leg_count <= 4, MarketError::BadLegCount);
+        require!(ctx.remaining_accounts.len() == leg_count as usize, MarketError::BadLegCount);
+        require!(amount > 0, MarketError::ZeroAmount);
+        require!(amount <= ctx.accounts.config.bet_cap, MarketError::OverCap);
+        require!(price_bps > 0 && price_bps <= 10_000, MarketError::BadPrice);
+        require_keys_eq!(ctx.accounts.user_token.owner, ctx.accounts.user.key(), MarketError::WrongOwner);
+        require_keys_eq!(ctx.accounts.house_token.owner, ctx.accounts.house.key(), MarketError::WrongOwner);
+        require_keys_eq!(ctx.accounts.user_token.mint, ctx.accounts.mint.key(), MarketError::WrongMint);
+        require_keys_eq!(ctx.accounts.house_token.mint, ctx.accounts.mint.key(), MarketError::WrongMint);
+
+        // validate every leg: open, before cutoff, same mint, same house — and record it
+        let mut legs = [Pubkey::default(); 4];
+        for (i, ai) in ctx.remaining_accounts.iter().enumerate() {
+            let leg: Account<Market> = Account::try_from(ai).map_err(|_| MarketError::LegMismatch)?;
+            require!(leg.status == 0, MarketError::NotOpen);
+            require!(now < leg.cutoff_ts, MarketError::Closed);
+            require_keys_eq!(leg.mint, ctx.accounts.mint.key(), MarketError::WrongMint);
+            require_keys_eq!(leg.house, ctx.accounts.house.key(), MarketError::NotHouse);
+            legs[i] = ai.key();
+        }
+
+        let payout = (amount as u128)
+            .checked_mul(BPS).and_then(|x| x.checked_div(price_bps as u128))
+            .ok_or(MarketError::Overflow)? as u64;
+        let liability = payout.checked_sub(amount).ok_or(MarketError::Overflow)?;
+
+        // user stake -> parlay vault
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.key(),
+                SplTransfer {
+                    from: ctx.accounts.user_token.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+        // house liability -> parlay vault
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.key(),
+                SplTransfer {
+                    from: ctx.accounts.house_token.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                    authority: ctx.accounts.house.to_account_info(),
+                },
+            ),
+            liability,
+        )?;
+
+        let p = &mut ctx.accounts.parlay;
+        p.user = ctx.accounts.user.key();
+        p.house = ctx.accounts.house.key();
+        p.mint = ctx.accounts.mint.key();
+        p.nonce = nonce;
+        p.amount = amount;
+        p.price_bps = price_bps;
+        p.payout = payout;
+        p.leg_count = leg_count;
+        p.legs = legs;
+        p.claimed = false;
+        p.bump = ctx.bumps.parlay;
+        p.vault_bump = ctx.bumps.vault;
+
+        emit!(ParlayPlaced { parlay: p.key(), user: p.user, nonce, amount, price_bps, payout, leg_count });
+        Ok(())
+    }
+
+    /// Claim a parlay after every leg is resolved (legs as remaining accounts, in stored order).
+    /// ALL legs YES → the user claims the payout; ANY leg NO → the house claims it back.
+    pub fn claim_parlay(ctx: Context<ClaimParlay>) -> Result<()> {
+        let p = &ctx.accounts.parlay;
+        require!(!p.claimed, MarketError::AlreadyClaimed);
+        require!(ctx.remaining_accounts.len() == p.leg_count as usize, MarketError::BadLegCount);
+
+        let mut all_yes = true;
+        for (i, ai) in ctx.remaining_accounts.iter().enumerate() {
+            require_keys_eq!(ai.key(), p.legs[i], MarketError::LegMismatch);
+            let leg: Account<Market> = Account::try_from(ai).map_err(|_| MarketError::LegMismatch)?;
+            require!(leg.status != 0, MarketError::NotResolved);
+            if leg.status != 1 { all_yes = false; }
+        }
+        let expected_owner = if all_yes { p.user } else { p.house };
+        require_keys_eq!(ctx.accounts.winner_token.owner, expected_owner, MarketError::NotWinner);
+        require_keys_eq!(ctx.accounts.winner_token.mint, p.mint, MarketError::WrongMint);
+
+        let parlay_key = p.key();
+        let seeds: &[&[u8]] = &[b"pvault", parlay_key.as_ref(), &[p.vault_bump]];
+        let payout = p.payout;
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.key(),
+                SplTransfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.winner_token.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[seeds],
+            ),
+            payout,
+        )?;
+        let p = &mut ctx.accounts.parlay;
+        p.claimed = true;
+        emit!(ParlayClaimed { parlay: parlay_key, user: p.user, payout, all_yes });
+        Ok(())
+    }
+
     /// Claim a winning bet's full escrow. YES → the user claims payout; NO → the house claims it.
     /// The `winner` token account must belong to the side that won.
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
@@ -236,6 +350,26 @@ pub struct Market {
 impl Market {
     // 8 disc + 32 + 32 + 8 + 1 + 2 + 8 + 1 + 8 + 8 + 8 + 1 + 1 + evidence(48+8+2+32+32=122)
     pub const SPACE: usize = 8 + 32 + 32 + 8 + 1 + 2 + 8 + 1 + 8 + 8 + 8 + 1 + 1 + 122;
+}
+
+#[account]
+pub struct Parlay {
+    pub user: Pubkey,
+    pub house: Pubkey,
+    pub mint: Pubkey,
+    pub nonce: u64,
+    pub amount: u64,
+    pub price_bps: u16,
+    pub payout: u64,
+    pub leg_count: u8,
+    pub legs: [Pubkey; 4],
+    pub claimed: bool,
+    pub bump: u8,
+    pub vault_bump: u8,
+}
+impl Parlay {
+    // 8 disc + 32*3 + 8 + 8 + 2 + 8 + 1 + 32*4 + 1 + 1 + 1
+    pub const SPACE: usize = 8 + 96 + 8 + 8 + 2 + 8 + 1 + 128 + 1 + 1 + 1;
 }
 
 #[account]
@@ -321,6 +455,55 @@ pub struct PlaceBet<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(nonce: u64)]
+pub struct PlaceParlay<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    /// the dealer co-signs — gates the combined price and the cap
+    #[account(mut)]
+    pub house: Signer<'info>,
+    #[account(seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, Config>,
+    pub mint: Account<'info, Mint>,
+    #[account(
+        init, payer = user, space = Parlay::SPACE,
+        seeds = [b"parlay".as_ref(), user.key().as_ref(), &nonce.to_le_bytes()],
+        bump
+    )]
+    pub parlay: Account<'info, Parlay>,
+    #[account(
+        init, payer = user,
+        token::mint = mint, token::authority = vault,
+        seeds = [b"pvault".as_ref(), parlay.key().as_ref()], bump
+    )]
+    pub vault: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub user_token: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub house_token: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimParlay<'info> {
+    #[account(mut)]
+    pub claimant: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [b"parlay".as_ref(), parlay.user.as_ref(), &parlay.nonce.to_le_bytes()],
+        bump = parlay.bump,
+    )]
+    pub parlay: Account<'info, Parlay>,
+    #[account(mut, seeds = [b"pvault".as_ref(), parlay.key().as_ref()], bump = parlay.vault_bump)]
+    pub vault: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub winner_token: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
 pub struct Resolve<'info> {
     pub resolver: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
@@ -355,6 +538,10 @@ pub struct BetPlaced { pub market: Pubkey, pub user: Pubkey, pub nonce: u64, pub
 pub struct Resolved { pub market: Pubkey, pub outcome: bool, pub message_id: [u8; 48], pub root_hash: [u8; 32] }
 #[event]
 pub struct Claimed { pub market: Pubkey, pub user: Pubkey, pub payout: u64, pub to: Pubkey }
+#[event]
+pub struct ParlayPlaced { pub parlay: Pubkey, pub user: Pubkey, pub nonce: u64, pub amount: u64, pub price_bps: u16, pub payout: u64, pub leg_count: u8 }
+#[event]
+pub struct ParlayClaimed { pub parlay: Pubkey, pub user: Pubkey, pub payout: u64, pub all_yes: bool }
 
 #[error_code]
 pub enum MarketError {
@@ -374,4 +561,6 @@ pub enum MarketError {
     #[msg("signer is not the resolver")] NotResolver,
     #[msg("bet already claimed")] AlreadyClaimed,
     #[msg("token account owner is not the winning side")] NotWinner,
+    #[msg("parlay needs 2-4 legs")] BadLegCount,
+    #[msg("leg account does not match the parlay")] LegMismatch,
 }
