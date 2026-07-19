@@ -81,16 +81,19 @@ Full loop on `/#/m/18241006`, verified live tonight:
 5. **White paper** at `/#/paper` renders all six sections with the live 109-match / 327-path calibration table.
 6. **Bots** trade autonomously into the same hedge book.
 
-## The blocker (needs you: ~2 minutes) — unchanged from shift #1
+## Devnet deploy — DONE ✅ (2026-07-19)
 
-Program + stack run on a **local `solana-test-validator`**. Devnet deploy needs ~2 SOL for the upgrade
-buffer; the devnet wallet `5nBA87pXc63mM2i2uFfyMKa3uwRagg499xecGhpKjCyJ` is short and the CLI faucet was
-rate-limited all night.
+The program is now **live on real devnet**, no longer local-only. Deploy authority
+`5nBA87pXc63mM2i2uFfyMKa3uwRagg499xecGhpKjCyJ` was funded with ~11 devnet SOL, and:
 
-1. Fund `5nBA87…` with ~3 devnet SOL at <https://faucet.solana.com>.
-2. `cd onchain && ./deploy-devnet.sh`
-3. `rm server/.data/{chain,wallets,onchain-ledger,hedge-ledger}.json`  (note the new hedge-ledger)
-4. Restart the API on devnet: `cd server && TOUCHLINE_BOTS=1 pnpm dev` (drop the local-RPC override).
+- Program `6kZYYdZLJcsU2ZBKKthc7BpddUiYdTbAtGigS2bJc53K` deployed to devnet (redeploy needed a manual
+  `solana program extend … 10240` first — the CLI's auto-extend was below devnet's 10 KB minimum).
+- API restarted pointed at devnet (dropped the `TOUCHLINE_DEVNET_RPC` local override); it re-provisioned
+  a fresh mock-USDC mint on devnet and `ready=true`.
+- Verified on devnet: faucet, dealer quote, a co-signed `$5` bet (real tx), and hedge-book recording all
+  work; bots trade on devnet. Local `solana-test-validator` has been shut down.
+
+To run the API on devnet again after a restart: `cd server && TOUCHLINE_BOTS=1 pnpm start` (no RPC override).
 
 ## How to run the demo right now (local validator, fully working)
 
