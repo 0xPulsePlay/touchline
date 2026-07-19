@@ -4,6 +4,8 @@ import { txlineGet } from "./creds.js";
 import { config } from "./config.js";
 
 export interface ProofReceipt {
+  /** which validation scheme settled it (for the receipt UI) */
+  method?: string;
   /** whether the proof chained all the way to the Solana-anchored root */
   verified: boolean;
   fetchedAt: number;
@@ -34,7 +36,9 @@ export async function receiptForTick(messageId: string, ts: number): Promise<Pro
       return { ...base, verified: false, verification: null, proof: null, error: "empty proof response" };
     }
     const verification = await verifyOddsProofOnChain(config.rpcUrl, proof);
-    return { ...base, verified: verification.verified, verification, proof, error: null };
+    // the odds proof is the two-level Merkle scheme (tick leaf -> odds sub-tree -> 5-min main
+    // tree -> daily_batch_roots PDA) — the validateStatV3 multiproof family
+    return { ...base, verified: verification.verified, verification, proof, error: null, method: "validateStatV3 · two-level multiproof" };
   } catch (e) {
     return {
       ...base,

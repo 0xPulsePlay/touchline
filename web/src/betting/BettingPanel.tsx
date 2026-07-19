@@ -116,11 +116,14 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
   const upKind = kind === "up" || kind === "heartbreak" || kind === "band";
   useEffect(() => {
     if (!displayQuote) return;
+    // during sim/live the gates chase the moving line — clamping here would force-move the user's
+    // barrier every second (state churn + refetch churn = the stutter). Show the gate instead.
+    if (simActive) return;
     if (upKind && barrier < minBar) setBarrier(minBar);
     if ((kind === "down" || kind === "comeback") && barrier > maxDown) setBarrier(Math.max(1, maxDown));
     if (kind === "band" && barrier2 > maxDown) setBarrier2(Math.max(1, maxDown));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minBar, maxDown, kind]);
+  }, [minBar, maxDown, kind, simActive]);
 
   const placeBet = async () => {
     if (!displayQuote?.valid) { setMsg({ kind: "err", text: displayQuote?.reason ?? "invalid barrier" }); return; }
@@ -331,6 +334,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
                 <a href={explorerAddr(settled.receipt.verification.pda, false)} target="_blank" rel="noreferrer">{settled.receipt.verification.pda.slice(0, 8)}… ↗</a></div>
             )}
             {settled.receipt && <div className="s-row"><span>deciding tick</span><span>{settled.receipt.messageId.slice(0, 24)}…</span></div>}
+            {settled.receipt?.method && <div className="s-row"><span>validation</span><span>{settled.receipt.method}</span></div>}
             {settled.hedge && (
               <div className="s-row"><span>house hedge net</span>
                 <span>{settled.hedge.net >= 0 ? "+" : ""}{usd(settled.hedge.net)} (unhedged: {usd(settled.hedge.unhedgedNet)})</span></div>

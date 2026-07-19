@@ -80,6 +80,7 @@ export interface Verification {
 
 export interface Receipt {
   verified: boolean;
+  method?: string;
   messageId: string;
   ts: number;
   verification: Verification | null;

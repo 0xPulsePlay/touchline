@@ -504,3 +504,21 @@
   cursor: pointer;
 }
 .tk-x:hover { color: var(--crit); }
+
+/* ── layout polish: hedge book, settlement, parlay header ── */
+.hedgebook { padding: 16px 16px 18px; }
+.hedgebook .hb-head { margin-bottom: 12px; }
+.hb-grid { align-items: stretch; }
+.hb-cell { justify-content: space-between; }
+.hb-cell .hb-v { line-height: 1.15; }
+.hb-cell .hb-sub { line-height: 1.35; }
+.settlement { padding: 16px 16px 18px; margin-bottom: 4px; }
+.settlement .s-rows { align-items: stretch; }
+.s-row { align-items: baseline; }
+.s-row span:last-child, .s-row a { text-align: right; overflow-wrap: anywhere; }
+
+.tk-title { display: flex; flex-direction: column; gap: 3px; }
+.tk-title h2 { margin: 0; }
+.tk-note { font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.panel.ticket { padding-bottom: 18px; }

@@ -65,7 +65,10 @@ export const TicketPanel = memo(function TicketPanel({ version, onChanged }: { v
   return (
     <section className="panel ticket">
       <div className="bet-head">
-        <h2>Parlay ticket <span className="devnet">all legs must hit</span></h2>
+        <div className="tk-title">
+          <h2>Parlay ticket</h2>
+          <span className="tk-note">All legs must hit · one on-chain escrow</span>
+        </div>
         {legs.length > 0 && <button className="btn2" onClick={() => { setLegs(clearTicket()); onChanged(); }}>Clear</button>}
       </div>
 

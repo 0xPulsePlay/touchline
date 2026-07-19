@@ -133,14 +133,22 @@ export async function ensureMarket(
   const { program } = loadProgram(c, house);
   const kind = mOpts.kind ?? "up";
   const line = mOpts.line ?? 0;
-  const epoch = effectiveEpoch(mOpts.epoch ?? 0); // mint-era folded in — no cross-era PDA reuse
   const code = sideCode(kind, side);
-  const fid = chainFid(fixtureId, line, epoch, kind);
-  const market = marketPda(fid, code, barrierBps);
+  // epoch-bump past markets this ledger already resolved: deterministic PDAs mean a re-run of the
+  // same (fixture, kind, side, barrier) would land on a closed market and fail with NotOpen —
+  // instead the next epoch opens a fresh one automatically (mint-era folded in via effectiveEpoch)
+  let epoch = effectiveEpoch(mOpts.epoch ?? 0);
+  let market = marketPda(chainFid(fixtureId, line, epoch, kind), code, barrierBps);
+  for (let tries = 0; tries < 16; tries++) {
+    const lm = ledger.markets.find((m) => m.key === market.toBase58());
+    if (!lm || lm.status === "open") break;
+    epoch = (epoch + 1) & 0xff;
+    market = marketPda(chainFid(fixtureId, line, epoch, kind), code, barrierBps);
+  }
   const key = market.toBase58();
   if (!(await c.getAccountInfo(market))) {
     const vault = vaultPda(market);
-    await program.methods.createMarket(new BN(fid), code, barrierBps, new BN(cutoffTs))
+    await program.methods.createMarket(new BN(chainFid(fixtureId, line, epoch, kind)), code, barrierBps, new BN(cutoffTs))
       .accounts({
         house: house.publicKey, mint: usdcMint, market, vault,
         tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
