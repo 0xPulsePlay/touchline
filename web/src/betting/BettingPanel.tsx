@@ -1,117 +1,203 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ActivityBet, type ChainState, type DealerQuote, type Fixture, type Side, type Treasury } from "../api.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, type ActivityBet, type BetKind, type ChainState, type DealerQuote, type Fixture, type PathPoint, type ResolveResult, type Side, type Treasury } from "../api.js";
 import { flag } from "../flags.js";
+import { sessionId } from "../session.js";
 import "./betting.css";
 
 const usd = (n: number) => (n < 0 ? `−$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`);
-
-/** A stable per-browser session id (the custodial demo wallet key on the server). */
-function sessionId(): string {
-  let s = localStorage.getItem("touchline.session");
-  if (!s) { s = "web-" + Math.random().toString(36).slice(2, 10); localStorage.setItem("touchline.session", s); }
-  return s;
-}
-
 const pctBps = (b: number) => `${(b / 100).toFixed(1)}%`;
 
-export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, names }: {
-  fixture: Fixture; side: Side; setSide: (s: Side) => void;
+const KIND_META: Record<BetKind, { icon: string; label: string; blurb: (name: string, U: number, L: number) => string }> = {
+  up: { icon: "↗", label: "Touch up", blurb: (n, U) => `${n} touches ${U}%?` },
+  down: { icon: "↘", label: "Touch down", blurb: (n, U) => `${n} drops to ${U}%?` },
+  band: { icon: "⇅", label: "Race", blurb: (n, U, L) => `${n} hits ${U}% before ${L}%?` },
+  heartbreak: { icon: "💔", label: "Heartbreak", blurb: (n, U) => `${n} touches ${U}% — and still loses?` },
+  comeback: { icon: "🔄", label: "Comeback", blurb: (n, U) => `${n} drops to ${U}% — and still wins?` },
+};
+
+const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+const explorerAddr = (a: string, devnet = true) => `https://explorer.solana.com/address/${a}${devnet ? "?cluster=devnet" : ""}`;
+
+export interface BettingPanelProps {
+  fixture: Fixture;
+  side: Side; setSide: (s: Side) => void;
+  kind: BetKind; setKind: (k: BetKind) => void;
   barrier: number; setBarrier: (b: number) => void;
+  barrier2: number; setBarrier2: (b: number) => void;
   names: { part1: string; draw: string; part2: string };
-}) {
+  /** revealed path + edge for the auto-settlement watcher (sim/live) */
+  path?: PathPoint[];
+  revealTs?: number | null;
+  simActive?: boolean;
+  /** the FULL match's last tick ts — the sim path is asOf-truncated, so heartbreak/comeback
+   *  must compare the reveal edge against this, not the truncated path's end */
+  fullEndTs?: number | null;
+}
+
+export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs }: BettingPanelProps) {
   const sid = sessionId();
   const [chain, setChain] = useState<ChainState | null>(null);
   const [bal, setBal] = useState<number | null>(null);
   const [quote, setQuote] = useState<DealerQuote | null>(null);
   const [activity, setActivity] = useState<ActivityBet[]>([]);
+  const [stake, setStake] = useState(5);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [treasury, setTreasury] = useState<Treasury | null>(null);
-  const lastBet = useRef<{ sig: string; marketKey: string } | null>(null);
+  const [settled, setSettled] = useState<(ResolveResult & { betSig?: string }) | null>(null);
+  const lastBet = useRef<{ sig: string; marketKey: string; kind: BetKind; side: Side; barrier: number; barrier2: number } | null>(null);
+  const settling = useRef(false);
+
+  const cap = chain?.betCapUsdc ?? 10;
 
   useEffect(() => { api.chainState().then(setChain).catch(() => {}); }, []);
   const refreshBal = useCallback(() => api.balance(sid).then((b) => setBal(b.balanceUsdc)).catch(() => {}), [sid]);
-  useEffect(() => { refreshBal(); }, [refreshBal]);
+  useEffect(() => { refreshBal(); const id = setInterval(refreshBal, 30_000); return () => clearInterval(id); }, [refreshBal]);
 
-  const refreshTreasury = useCallback(() => {
-    const key = lastBet.current?.marketKey;
-    if (!key) return;
-    api.treasury(key).then(setTreasury).catch(() => {});
-  }, []);
-  // keep the hedge book live while a market is in play (bots trade into the same book)
-  useEffect(() => {
-    if (!lastBet.current) return;
-    const id = setInterval(refreshTreasury, 4000);
-    return () => clearInterval(id);
-  }, [refreshTreasury, treasury?.marketKey]);
-
-  // quote follows the barrier/side (gated on the server)
+  // quote follows kind/side/barriers (gated on the server); re-polls so a transient API
+  // hiccup can't leave the panel stuck quoteless with a dead button
   useEffect(() => {
     let dead = false;
-    api.dealerQuote(fixture.fixtureId, side, barrier).then((q) => !dead && setQuote(q)).catch(() => setQuote(null));
-    return () => { dead = true; };
-  }, [fixture.fixtureId, side, barrier]);
+    const fetchQuote = () =>
+      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined)
+        .then((q) => !dead && setQuote(q)).catch(() => {});
+    void fetchQuote();
+    const id = setInterval(fetchQuote, 15_000);
+    return () => { dead = true; clearInterval(id); };
+  }, [fixture.fixtureId, side, barrier, barrier2, kind]);
 
-  // activity feed polls
+  // activity feed polls — scoped to the selected kind
   useEffect(() => {
     const tick = () => api.activity().then(setActivity).catch(() => {});
     tick();
     const id = setInterval(tick, 4000);
     return () => clearInterval(id);
   }, []);
+  const scoped = useMemo(() => activity.filter((b) => (b.kind ?? "up") === kind), [activity, kind]);
 
-  const faucet = async () => {
-    setBusy("faucet"); setMsg({ kind: "ok", text: "Minting 100 tUSDC on devnet…" });
-    try { const r = await api.faucet(sid, "you", 100); setBal(r.balanceUsdc); setMsg({ kind: "ok", text: `+100 tUSDC — balance ${r.balanceUsdc.toFixed(2)}` }); }
-    catch (e) { setMsg({ kind: "err", text: `Faucet failed — ${String(e)}` }); } finally { setBusy(null); }
-  };
-
-  const placeBet = async (usdc: number) => {
-    if (!quote?.valid) { setMsg({ kind: "err", text: quote?.reason ?? "invalid barrier" }); return; }
-    setBusy("bet"); setMsg({ kind: "ok", text: "Confirming on devnet — co-signing + escrowing the payout…" });
-    try {
-      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, usdc });
-      lastBet.current = { sig: r.sig, marketKey: r.marketKey };
-      setMsg({ kind: "ok", text: `Bet placed on-chain — $${r.amountUsdc} → $${r.payoutUsdc.toFixed(2)} if it touches. tx ${r.sig.slice(0, 8)}…` });
-      refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
-    } catch (e) { setMsg({ kind: "err", text: String(e) }); } finally { setBusy(null); }
-  };
-
-  const settle = async () => {
+  const refreshTreasury = useCallback(() => {
+    const key = lastBet.current?.marketKey;
+    if (!key) return;
+    api.treasury(key).then(setTreasury).catch(() => {});
+  }, []);
+  useEffect(() => {
     if (!lastBet.current) return;
-    setBusy("settle"); setMsg(null);
+    const id = setInterval(refreshTreasury, 4000);
+    return () => clearInterval(id);
+  }, [refreshTreasury, treasury?.marketKey]);
+
+  // slider ranges per kind
+  const minBar = quote ? Math.ceil(quote.minBarrierBps / 100) : 5;
+  const maxDown = quote?.maxDownBps !== undefined ? Math.floor(quote.maxDownBps / 100) : 95;
+  const upKind = kind === "up" || kind === "heartbreak" || kind === "band";
+  useEffect(() => {
+    if (!quote) return;
+    if (upKind && barrier < minBar) setBarrier(minBar);
+    if ((kind === "down" || kind === "comeback") && barrier > maxDown) setBarrier(Math.max(1, maxDown));
+    if (kind === "band" && barrier2 > maxDown) setBarrier2(Math.max(1, maxDown));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minBar, maxDown, kind]);
+
+  const placeBet = async () => {
+    if (!quote?.valid) { setMsg({ kind: "err", text: quote?.reason ?? "invalid barrier" }); return; }
+    const usdcAmt = Math.max(1, Math.min(cap, stake));
+    setBusy("bet"); setSettled(null);
+    setMsg({ kind: "ok", text: "Confirming on devnet — co-signing + escrowing the payout…" });
     try {
-      const res = await api.resolveOnchain(lastBet.current.marketKey);
-      if (res.outcome === "yes") {
-        await api.claim(lastBet.current.sig);
-        const v = res.receipt?.verification;
-        setMsg({ kind: "ok", text: `Resolved YES — settled from a ${res.verified ? "mainnet-verified" : ""} Merkle proof${v ? ` (PDA ${v.pda.slice(0, 8)}…)` : ""}. Payout claimed.` });
-      } else {
-        setMsg({ kind: "ok", text: "Resolved NO — barrier never touched; house keeps the stake." });
-      }
+      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt });
+      lastBet.current = { sig: r.sig, marketKey: r.marketKey, kind, side, barrier, barrier2 };
+      setMsg({ kind: "ok", text: `Position live on-chain — ${usd(r.amountUsdc)} → ${usd(r.payoutUsdc)} if it hits.` });
       refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
     } catch (e) { setMsg({ kind: "err", text: String(e) }); } finally { setBusy(null); }
   };
+
+  const settle = useCallback(async (auto = false) => {
+    const lb = lastBet.current;
+    if (!lb || settling.current) return;
+    settling.current = true;
+    setBusy("settle");
+    if (auto) setMsg({ kind: "ok", text: "Trigger hit — resolving on-chain with the Merkle proof…" });
+    try {
+      const res = await api.resolveOnchain(lb.marketKey);
+      if (res.outcome === "yes") {
+        await api.claim(lb.sig).catch(() => {});
+      }
+      setSettled({ ...res, betSig: lb.sig });
+      setMsg(null);
+      refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
+    } catch (e) {
+      const s = String(e);
+      // pending (409) is expected mid-match for heartbreak/comeback — retry later, not an error
+      if (!s.includes("409")) setMsg({ kind: "err", text: s });
+    } finally { settling.current = false; setBusy(null); }
+  }, [refreshBal, refreshTreasury]);
+
+  // ── auto-settlement watcher: the demo moment ─────────────────────────────────
+  // during sim/live, when the revealed path trips the open bet's trigger, resolve on-chain
+  // automatically. up/down/band fire at the trip; heartbreak/comeback wait for full time (the
+  // result is part of the claim).
+  useEffect(() => {
+    const lb = lastBet.current;
+    if (!lb || settled || settling.current || !path?.length || revealTs == null) return;
+    const revealed = path.filter((t) => t.ts >= fixture.startTime && t.ts <= revealTs);
+    if (!revealed.length) return;
+    const B = lb.barrier, L = lb.barrier2;
+    const tripped =
+      lb.kind === "up" || lb.kind === "heartbreak" ? revealed.some((t) => t[lb.side] >= B)
+      : lb.kind === "down" || lb.kind === "comeback" ? revealed.some((t) => t[lb.side] <= B)
+      : revealed.some((t) => t[lb.side] >= B || t[lb.side] <= L);
+    if (!tripped) return;
+    const needsFinal = lb.kind === "heartbreak" || lb.kind === "comeback";
+    const matchEnd = fullEndTs ?? path[path.length - 1]!.ts;
+    if (needsFinal && revealTs < matchEnd) return; // let the story play out to the whistle
+    void settle(true);
+  }, [revealTs, path, fixture.startTime, settled, settle, fullEndTs]);
+
+  // end-of-sim catch: the sim clears revealTs when it completes, so a bet whose story needed the
+  // final whistle (heartbreak/comeback) settles here, off the full path.
+  const wasSim = useRef(false);
+  useEffect(() => {
+    if (simActive) { wasSim.current = true; return; }
+    if (!wasSim.current) return;
+    wasSim.current = false;
+    const lb = lastBet.current;
+    if (!lb || settled || settling.current || !path?.length) return;
+    const inPlay = path.filter((t) => t.ts >= fixture.startTime);
+    const tripped =
+      lb.kind === "up" || lb.kind === "heartbreak" ? inPlay.some((t) => t[lb.side] >= lb.barrier)
+      : lb.kind === "down" || lb.kind === "comeback" ? inPlay.some((t) => t[lb.side] <= lb.barrier)
+      : inPlay.some((t) => t[lb.side] >= lb.barrier || t[lb.side] <= lb.barrier2);
+    if (tripped) void settle(true);
+  }, [simActive, path, fixture.startTime, settled, settle]);
 
   const sideName = side === "draw" ? "Draw" : names[side];
-  const minBar = quote ? Math.ceil(quote.minBarrierBps / 100) : 5;
-  // keep the slider from ever sitting below the gated minimum once we know the current probability
-  useEffect(() => {
-    if (quote && barrier < minBar) setBarrier(minBar);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minBar]);
+  const meta = KIND_META[kind];
+
+  const decomp = () => {
+    if (!quote?.valid) return null;
+    if (kind === "band") return `(p−L)/(U−L) = (${pctBps(quote.pBps)}−${barrier2})/(${barrier}−${barrier2}) — exact`;
+    if (kind === "down" || kind === "comeback") return `(1−p)/(1−B) ${kind === "comeback" ? "× A " : ""}× ${quote.discount.toFixed(2)}`;
+    if (kind === "heartbreak") return `p/B × (1−B) = ${pctBps(quote.boundBps)} × ${(1 - barrier / 100).toFixed(2)} × ${quote.discount.toFixed(2)}`;
+    return `p/B ${pctBps(quote.pBps)}/${barrier} = ${pctBps(quote.boundBps)} × ${quote.discount.toFixed(2)}`;
+  };
 
   return (
     <section className="panel bet">
       <div className="bet-head">
-        <h2>Predict a touch <span className="devnet">devnet · mock USDC</span></h2>
-        <div className="wallet-line">
-          {bal === null ? <span className="mono dim">—</span> : <span className="mono bal">{bal.toFixed(2)} <span className="tick">tUSDC</span></span>}
-          <button className="btn2" onClick={faucet} disabled={busy === "faucet"}>{busy === "faucet" ? "…" : "＋ Faucet 100"}</button>
-        </div>
+        <h2>Predict the path <span className="devnet">devnet</span></h2>
+        {bal !== null && <span className="mono balmini" title="session balance">{bal.toFixed(2)} <span className="tick">USDC</span></span>}
       </div>
 
-      {/* one surface: pick a side, drag the barrier, place the prediction — no market to open */}
+      {/* the five instruments */}
+      <div className="kindtabs" role="tablist" aria-label="market type">
+        {(Object.keys(KIND_META) as BetKind[]).map((k) => (
+          <button key={k} role="tab" aria-selected={kind === k} className={`ktab${kind === k ? " on" : ""}`} onClick={() => { setKind(k); setSettled(null); }}>
+            <span className="kicon" aria-hidden="true">{KIND_META[k].icon}</span> {KIND_META[k].label}
+          </button>
+        ))}
+      </div>
+
+      {/* side + barrier(s) */}
       <div className="picker">
         <div className="seg" role="group" aria-label="team">
           {(["part1", "draw", "part2"] as Side[]).map((k) => (
@@ -121,54 +207,95 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
           ))}
         </div>
         <div className="barrierbox">
-          <span className="mono blabel">touches</span>
-          <input type="range" min={minBar} max={95} step={1} value={Math.max(barrier, minBar)}
-            onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
+          <span className="mono blabel">{kind === "band" ? "upper" : kind === "down" || kind === "comeback" ? "drops to" : "touches"}</span>
+          {upKind ? (
+            <input type="range" min={minBar} max={95} step={1} value={Math.max(barrier, minBar)}
+              onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
+          ) : (
+            <input type="range" min={1} max={Math.max(1, maxDown)} step={1} value={Math.min(barrier, Math.max(1, maxDown))}
+              onChange={(e) => setBarrier(Number(e.target.value))} aria-label="barrier" />
+          )}
           <span className="bval mono">{barrier}%</span>
         </div>
+        {kind === "band" && (
+          <div className="barrierbox">
+            <span className="mono blabel">lower</span>
+            <input type="range" min={1} max={Math.max(1, maxDown)} step={1} value={Math.min(barrier2, Math.max(1, maxDown))}
+              onChange={(e) => setBarrier2(Number(e.target.value))} aria-label="lower barrier" />
+            <span className="bval mono">{barrier2}%</span>
+          </div>
+        )}
       </div>
 
       <div className="quote-card">
         <div className="q-line">
-          <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{sideName}</b> touches <b>{barrier}%</b>?</span>
-          {quote && !quote.valid && <span className="gate">pick ≥ {minBar}% (now {(quote.pBps / 100).toFixed(0)}%)</span>}
+          <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{meta.blurb(sideName, barrier, barrier2)}</b></span>
+          {quote && !quote.valid && <span className="gate">{quote.reason}</span>}
         </div>
         {quote?.valid && (
           <div className="q-body">
             <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
             <div className="q-arrow">→</div>
-            <div className="q-payout"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it touches</span></div>
+            <div className="q-payout"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it hits</span></div>
             <div className="q-decomp mono">
-              p/B {pctBps(quote.pBps)}/{barrier} = {pctBps(quote.boundBps)} × {quote.discount.toFixed(2)}
+              {decomp()}
               <a className="q-paper" href="#/paper"> · how?</a>
             </div>
           </div>
         )}
         <div className="bet-actions">
-          {[2, 5, 10].map((v) => (
-            <button key={v} className="stakebtn" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < v} onClick={() => placeBet(v)}>
-              {busy === "bet" ? "…" : `Bet $${v}`}
-            </button>
-          ))}
-          {lastBet.current && <button className="btn2 settle" onClick={settle} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>}
+          <div className="stakebox">
+            <span className="mono blabel">stake</span>
+            <input className="stakein mono" type="number" min={1} max={cap} step={1} value={stake}
+              onChange={(e) => setStake(Math.max(1, Math.min(cap, Number(e.target.value) || 1)))} aria-label="stake in USDC" />
+            {[2, 5, 10].map((v) => (
+              <button key={v} className={`chip${stake === v ? " on" : ""}`} onClick={() => setStake(v)}>${v}</button>
+            ))}
+          </div>
+          <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
+            {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
+          </button>
+          {lastBet.current && !settled && !simActive && (
+            <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
+          )}
         </div>
-        {quote?.valid && (bal ?? 0) < 2 && busy !== "faucet" && (
-          <div className="bet-hint">Balance too low to bet — hit <b>＋ Faucet 100</b> above to grab devnet tUSDC.</div>
+        {quote?.valid && (bal ?? 0) < stake && busy !== "bet" && (
+          <div className="bet-hint">Balance too low — grab devnet funds from the <b>wallet</b> in the top bar.</div>
         )}
         {msg && <div className={`bet-msg ${msg.kind}`}>{msg.text}</div>}
       </div>
 
-      {treasury && treasury.bets > 0 && (
+      {/* settlement card — the on-chain verification moment */}
+      {settled && (
+        <div className={`settlement ${settled.outcome}`}>
+          <div className="s-head">
+            <span className="s-outcome">{settled.outcome === "yes" ? "✓ Resolved YES — payout claimed" : "Resolved NO"}</span>
+            {settled.verified && <span className="s-verified">Merkle-verified against mainnet ✓</span>}
+          </div>
+          <div className="s-rows mono">
+            <div className="s-row"><span>settlement tx</span>
+              <a href={explorerTx(settled.sig)} target="_blank" rel="noreferrer">{settled.sig.slice(0, 8)}…{settled.sig.slice(-6)} ↗</a></div>
+            {settled.betSig && <div className="s-row"><span>bet tx</span>
+              <a href={explorerTx(settled.betSig)} target="_blank" rel="noreferrer">{settled.betSig.slice(0, 8)}…{settled.betSig.slice(-6)} ↗</a></div>}
+            {settled.receipt?.verification && (
+              <div className="s-row"><span>mainnet anchor PDA</span>
+                <a href={explorerAddr(settled.receipt.verification.pda, false)} target="_blank" rel="noreferrer">{settled.receipt.verification.pda.slice(0, 8)}… ↗</a></div>
+            )}
+            {settled.receipt && <div className="s-row"><span>deciding tick</span><span>{settled.receipt.messageId.slice(0, 24)}…</span></div>}
+            {settled.hedge && (
+              <div className="s-row"><span>house hedge net</span>
+                <span>{settled.hedge.net >= 0 ? "+" : ""}{usd(settled.hedge.net)} (unhedged: {usd(settled.hedge.unhedgedNet)})</span></div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {treasury && treasury.bets > 0 && !settled && (
         <div className="hedgebook">
           <div className="hb-head">
             <span className="act-head" style={{ margin: 0 }}>House hedge book</span>
             <span className="devnet">net-zero replication</span>
           </div>
-          <p className="hb-note">
-            Every ticket the house writes is offset live: it buys <b>{treasury.shares.toFixed(1)} win-shares</b> at{" "}
-            {(treasury.venueP * 100).toFixed(0)}¢ on {treasury.venue.replace("txline-winprob", "the TxLINE win price")}{" "}
-            (cost {usd(treasury.hedgeCostUsdc)}), collapsing the payout risk into a small residual either way.
-          </p>
           <div className="hb-grid">
             <div className="hb-cell">
               <span className="hb-k">Premiums in</span>
@@ -176,44 +303,27 @@ export function BettingPanel({ fixture, side, setSide, barrier, setBarrier, name
               <span className="hb-sub">{treasury.bets} ticket{treasury.bets === 1 ? "" : "s"}</span>
             </div>
             <div className="hb-cell">
-              <span className="hb-k">Payout if it touches</span>
+              <span className="hb-k">Payout if it hits</span>
               <span className="hb-v mono">{usd(treasury.liabilityUsdc)}</span>
-              <span className="hb-sub">hedge returns ≈ {usd(treasury.hedgeValueIfTouched)}</span>
+              <span className="hb-sub">fully escrowed on-chain</span>
             </div>
             <div className="hb-cell">
-              <span className="hb-k">Hedge cost</span>
+              <span className="hb-k">Hedge position</span>
               <span className="hb-v mono">{usd(treasury.hedgeCostUsdc)}</span>
               <span className="hb-sub">{treasury.shares.toFixed(1)} shares @ {(treasury.venueP * 100).toFixed(0)}¢</span>
             </div>
           </div>
-          {!treasury.realized ? (
-            <div className="hb-scenarios">
-              <div className="hb-row"><span className="hb-tag risk">unhedged, a touch</span>
-                <span className="mono">would cost the house <b>{usd(treasury.unhedgedNetIfYes)}</b></span></div>
-              <div className="hb-row"><span className="hb-tag yes">touches {pctBps(treasury.barrierBps)}</span>
-                <span className="mono">hedged net <b>{treasury.hedgedNetIfYes >= 0 ? "+" : ""}{usd(treasury.hedgedNetIfYes)}</b> <span className="hb-sub">+ any jump overshoot</span></span></div>
-              <div className="hb-row"><span className="hb-tag no">never touches</span>
-                <span className="mono">hedged net <b>{treasury.hedgedNetIfNo >= 0 ? "+" : ""}{usd(treasury.hedgedNetIfNo)}</b></span></div>
-            </div>
-          ) : (
-            <div className={`hb-settled ${treasury.realized.net >= -0.01 ? "flat" : ""}`}>
-              Settled {treasury.realized.outcome.toUpperCase()} — unhedged this would have been{" "}
-              <b>{usd(treasury.realized.unhedgedNet)}</b>; hedged, the book landed at{" "}
-              <b>{treasury.realized.net >= 0 ? "+" : ""}{usd(treasury.realized.net)}</b>{" "}
-              <span className="hb-sub">(premiums {usd(treasury.realized.premiums)} − hedge {usd(treasury.realized.hedgeCost)} + liquidation {usd(treasury.realized.hedgeValue)} − payout {usd(treasury.realized.paid)})</span>
-            </div>
-          )}
         </div>
       )}
 
       <div className="activity">
-        <div className="act-head">Live market activity</div>
-        {activity.length === 0 && <div className="dim">No bets yet — place one, or wait for the bots.</div>}
+        <div className="act-head">{meta.icon} {meta.label} — live activity</div>
+        {scoped.length === 0 && <div className="dim">No {meta.label.toLowerCase()} tickets yet — yours can be the first.</div>}
         <div className="act-list">
-          {activity.slice(0, 8).map((b) => (
+          {scoped.slice(0, 8).map((b) => (
             <div className={`act-row${b.bot ? " bot" : " you"}`} key={b.sig}>
               <span className="act-who">{b.bot ? "🤖" : "🫵"} {b.label}</span>
-              <span className="act-what mono">${b.amountUsdc} · touches {pctBps(b.barrierBps)}</span>
+              <span className="act-what mono">${b.amountUsdc} · {KIND_META[b.kind ?? "up"].icon} {pctBps(b.barrierBps)}{b.barrier2Bps ? `↔${pctBps(b.barrier2Bps)}` : ""}</span>
               <span className="act-odds mono">@ {pctBps(b.priceBps)}</span>
             </div>
           ))}

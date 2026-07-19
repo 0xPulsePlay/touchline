@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type Calibration, type Fixture, type PathResponse, type Side } from "./api.js";
+import { api, type BetKind, type Calibration, type Fixture, type PathResponse, type Side } from "./api.js";
 import { BettingPanel } from "./betting/BettingPanel.js";
 import { flag } from "./flags.js";
 import { groupOf } from "./groups.js";
@@ -21,7 +21,9 @@ export function App({ fixtureId }: { fixtureId: number }) {
   const [sel, setSel] = useState<Fixture | null>(null);
   const [pathRes, setPathRes] = useState<PathResponse | null>(null);
   const [side, setSide] = useState<Side>("part1");
+  const [kind, setKind] = useState<BetKind>("up");
   const [barrier, setBarrier] = useState(60);
+  const [barrier2, setBarrier2] = useState(20);
   const [cal, setCal] = useState<Calibration | null>(null);
   const [cursor, setCursor] = useState(1e9);
   const [playing, setPlaying] = useState(false);
@@ -255,6 +257,8 @@ export function App({ fixtureId }: { fixtureId: number }) {
                     names={names}
                     side={side}
                     barrier={barrier}
+                    kind={kind}
+                    barrier2={kind === "band" ? barrier2 : undefined}
                     cursor={simUi || isLive ? 1e9 : visibleCursor}
                     live={simUi || isLive ? { revealTs: revealTs ?? (pathRes.path[pathRes.path.length - 1]?.ts ?? sel.startTime) } : undefined}
                     preNote={preNote}
@@ -307,9 +311,17 @@ export function App({ fixtureId }: { fixtureId: number }) {
               fixture={sel}
               side={side}
               setSide={setSide}
+              kind={kind}
+              setKind={setKind}
               barrier={barrier}
               setBarrier={setBarrier}
+              barrier2={barrier2}
+              setBarrier2={setBarrier2}
               names={names}
+              path={pathRes?.path}
+              revealTs={simUi || isLive ? (revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? null) : null}
+              simActive={!!simUi || isLive}
+              fullEndTs={fullEndRef.current}
             />
 
             <section className="panel">

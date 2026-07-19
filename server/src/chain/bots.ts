@@ -74,11 +74,13 @@ export async function startBots(deps: BotDeps): Promise<void> {
         // one bot acts per fixture per tick, staggered so different bots hit different fixtures
         const b = FLEET[(cycle + fi) % FLEET.length]!;
 
-        // solvency: bots re-faucet themselves when they run low (mock USDC, zero real value)
-        const bal = await balance(b.id, conn).catch(() => 0);
-        if (bal < b.stakeUsdc * 10 ** USDC_DECIMALS) {
-          await faucet(b.id, b.label, 500 * 10 ** USDC_DECIMALS, conn).catch(() => {});
-          console.log(`[bots] ${b.label} re-fauceted (balance ran dry)`);
+        // solvency: check sparingly (every 6th cycle) — the public devnet RPC rate-limits hard
+        if (cycle % 6 === 0) {
+          const bal = await balance(b.id, conn).catch(() => 0);
+          if (bal < b.stakeUsdc * 10 ** USDC_DECIMALS) {
+            await faucet(b.id, b.label, 500 * 10 ** USDC_DECIMALS, conn).catch(() => {});
+            console.log(`[bots] ${b.label} re-fauceted (balance ran dry)`);
+          }
         }
 
         // side + barrier vary deterministically by cycle so the feed shows a real market,
@@ -109,5 +111,5 @@ export async function startBots(deps: BotDeps): Promise<void> {
     }
   };
   void tick();
-  setInterval(tick, 12_000);
+  setInterval(tick, 45_000); // gentle cadence — the public devnet RPC 429s under load
 }

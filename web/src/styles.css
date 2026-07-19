@@ -77,6 +77,33 @@ button { color: inherit; }
 }
 .walletbtn.connected { border-color: var(--line); background: var(--surface); }
 .walletbtn .wdot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+
+/* session-wallet balance pill + popover */
+.wmenu { position: relative; margin-right: 10px; }
+.wpill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 100px;
+  border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 0.8rem;
+  color: var(--ink); }
+.wpill:hover { border-color: var(--ink-3); }
+.wpill .wsol { color: var(--ink-2); }
+.wpill .wsep { width: 1px; height: 12px; background: var(--line); }
+.wpill .wtick { font-size: 0.62rem; color: var(--ink-3); }
+.wpop { position: absolute; right: 0; top: calc(100% + 8px); width: 260px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 14px; padding: 14px; z-index: 60;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.18); }
+.wpop-head { display: flex; align-items: center; justify-content: space-between; font-family: Futura, "Century Gothic", sans-serif;
+  font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+.wrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 0.88rem; }
+.wrow .wamt { margin-left: auto; font-weight: 700; }
+.wicon { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center;
+  justify-content: center; font-weight: 700; font-size: 0.8rem; flex: none; }
+.wicon.sol { background: color-mix(in srgb, #9945ff 18%, transparent); color: #9945ff; }
+.wicon.usdc { background: color-mix(in srgb, #2775ca 18%, transparent); color: #2775ca; }
+.wfund { width: 100%; margin-top: 8px; padding: 9px 12px; border: 1px solid var(--pitch); background: none;
+  color: var(--pitch); border-radius: 10px; font-family: Futura, "Century Gothic", sans-serif; font-weight: 700;
+  font-size: 0.82rem; cursor: pointer; }
+.wfund:hover:not(:disabled) { background: color-mix(in srgb, var(--pitch) 8%, transparent); }
+.wnote { margin-top: 8px; font-size: 0.75rem; color: var(--ink-2); }
+.wfoot { margin-top: 10px; font-size: 0.62rem; color: var(--ink-3); letter-spacing: 0.04em; }
 .walletbtn:hover { filter: brightness(1.06); }
 
 /* ── match switcher (mobile) ────────────────────────── */

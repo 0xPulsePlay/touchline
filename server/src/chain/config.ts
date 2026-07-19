@@ -17,8 +17,11 @@ export function houseKeypair(): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(secret));
 }
 
+let conn: Connection | null = null;
+/** Singleton connection — the public devnet RPC rate-limits per-connection churn hard (429s). */
 export function connection(): Connection {
-  return new Connection(DEVNET_RPC, "confirmed");
+  if (!conn) conn = new Connection(DEVNET_RPC, "confirmed");
+  return conn;
 }
 
 /** Where mint/config addresses are persisted after one-time setup. */

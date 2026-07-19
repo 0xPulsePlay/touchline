@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { connectWallet, disconnectWallet, rememberedWallet, shortKey } from "./wallet.js";
+import { WalletMenu } from "./WalletMenu.js";
 
 /** Shared top bar for both pages: brand (→ home), an optional back link on the
- *  market page, and the wallet connect toggle. Wallet state persists via wallet.ts,
- *  so the connected pill reads consistently across a home↔market navigation. */
+ *  market page, the session-wallet balance pill (SOL/USDC + devnet funding), and the
+ *  Phantom connect toggle. Wallet state persists via wallet.ts. */
 export function AppBar({ back, tag }: { back?: boolean; tag?: string }) {
   const [wallet, setWallet] = useState<string | null>(rememberedWallet());
 
@@ -22,6 +23,7 @@ export function AppBar({ back, tag }: { back?: boolean; tag?: string }) {
       <a className="brand" href="#/">TOUCH<span className="tick">LINE</span></a>
       {tag && <span className="appbar-tag">{tag}</span>}
       <div className="spacer" />
+      <WalletMenu />
       <button
         className={`walletbtn${wallet ? " connected" : ""}`}
         onClick={toggle}

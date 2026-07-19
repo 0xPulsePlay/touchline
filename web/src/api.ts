@@ -147,10 +147,10 @@ export const api = {
   chainState: () => fetch("/api/chain/state").then((r) => j<ChainState>(r)),
   faucet: (sessionId: string, label: string, usdc = 100) =>
     fetch("/api/faucet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, label, usdc }) }).then((r) => j<{ pubkey: string; balanceUsdc: number }>(r)),
-  balance: (sessionId: string) => fetch(`/api/balance?sessionId=${sessionId}`).then((r) => j<{ balanceUsdc: number }>(r)),
-  dealerQuote: (fixtureId: number, side: Side, barrier: number) =>
-    fetch(`/api/dealer/quote?fixtureId=${fixtureId}&side=${side}&barrier=${barrier}`).then((r) => j<DealerQuote>(r)),
-  bet: (b: { sessionId: string; label: string; fixtureId: number; side: Side; barrier: number; usdc: number }) =>
+  balance: (sessionId: string) => fetch(`/api/balance?sessionId=${sessionId}`).then((r) => j<{ balanceUsdc: number; balanceSol: number }>(r)),
+  dealerQuote: (fixtureId: number, side: Side, barrier: number, kind: BetKind = "up", barrier2?: number) =>
+    fetch(`/api/dealer/quote?fixtureId=${fixtureId}&side=${side}&barrier=${barrier}&kind=${kind}${barrier2 !== undefined ? `&barrier2=${barrier2}` : ""}`).then((r) => j<DealerQuote>(r)),
+  bet: (b: { sessionId: string; label: string; fixtureId: number; side: Side; barrier: number; barrier2?: number; kind?: BetKind; usdc: number; epoch?: number }) =>
     fetch("/api/bet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<BetResult>(r)),
   resolveOnchain: (marketKey: string) => fetch(`/api/market/${marketKey}/resolve`, { method: "POST" }).then((r) => j<ResolveResult>(r)),
   claim: (sig: string) => fetch("/api/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sig }) }).then((r) => j<{ sig: string }>(r)),
@@ -167,10 +167,15 @@ export interface Treasury {
   realized: HedgeRealized | null;
 }
 
+export type BetKind = "up" | "down" | "band" | "heartbreak" | "comeback";
 export interface ChainState { programId: string; cluster: string; rpc: string; usdcMint: string | null; betCapUsdc: number; ready: boolean }
-export interface DealerQuote { side: Side; pBps: number; barrierBps: number; boundBps: number; discount: number; priceBps: number; payoutMult: number; minBarrierBps: number; valid: boolean; reason?: string }
-export interface BetResult { sig: string; marketKey: string; priceBps: number; payoutMult: number; amountUsdc: number; payoutUsdc: number }
-export interface ActivityBet { sig: string; marketKey: string; fixtureId: number; side: Side; barrierBps: number; label: string; bot: boolean; ts: number; claimed: boolean; amountUsdc: number; priceBps: number; payoutUsdc: number; bettor: string }
+export interface DealerQuote {
+  side: Side; pBps: number; barrierBps: number; boundBps: number; discount: number; priceBps: number;
+  payoutMult: number; minBarrierBps: number; valid: boolean; reason?: string;
+  kind?: BetKind; barrier2Bps?: number; boundDownBps?: number; maxDownBps?: number;
+}
+export interface BetResult { sig: string; marketKey: string; priceBps: number; payoutMult: number; amountUsdc: number; payoutUsdc: number; kind?: BetKind }
+export interface ActivityBet { sig: string; marketKey: string; fixtureId: number; side: Side; barrierBps: number; kind?: BetKind; barrier2Bps?: number | null; label: string; bot: boolean; ts: number; claimed: boolean; amountUsdc: number; priceBps: number; payoutUsdc: number; bettor: string }
 export interface OnchainMarket { key: string; fixtureId: number; side: Side; barrierBps: number; status: "open" | "yes" | "no"; bets: ActivityBet[]; treasury?: Treasury }
 export interface HedgeRealized { outcome: "yes" | "no"; touchProb: number; premiums: number; hedgeCost: number; hedgeValue: number; paid: number; net: number; unhedgedNet: number; ts: number }
-export interface ResolveResult { outcome: "yes" | "no"; sig: string; verified?: boolean; receipt?: Receipt; hedge?: HedgeRealized }
+export interface ResolveResult { outcome: "yes" | "no"; sig: string; verified?: boolean; receipt?: Receipt; hedge?: HedgeRealized; kind?: BetKind }

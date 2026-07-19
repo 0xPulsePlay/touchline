@@ -9,6 +9,18 @@
 .wallet-line .bal .tick { font-size: 0.7rem; color: var(--ink-3); font-weight: 400; }
 .wallet-line .dim { color: var(--ink-3); }
 
+.balmini { font-size: 0.95rem; font-weight: 700; }
+.balmini .tick { font-size: 0.62rem; color: var(--ink-3); font-weight: 400; }
+
+/* the five instruments */
+.kindtabs { display: flex; gap: 6px; margin-top: 14px; overflow-x: auto; padding-bottom: 2px; }
+.ktab { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 100px;
+  border: 1px solid var(--line); background: none; color: var(--ink-2); font-size: 0.8rem;
+  font-family: Futura, "Century Gothic", sans-serif; cursor: pointer; white-space: nowrap; flex: none; }
+.ktab:hover { border-color: var(--ink-3); }
+.ktab.on { background: var(--ink); color: var(--ground); border-color: var(--ink); font-weight: 700; }
+.ktab .kicon { font-size: 0.9rem; }
+
 .picker { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 .picker .seg { display: flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .picker .seg button { flex: 1; padding: 10px 6px; border: none; background: none; cursor: pointer;
@@ -36,12 +48,34 @@
 .q-paper { color: var(--accent); text-decoration: none; }
 .q-paper:hover { text-decoration: underline; }
 
-.bet-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.bet-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+.stakebox { display: flex; align-items: center; gap: 7px; }
+.stakein { width: 74px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--ink); font-size: 0.95rem; font-weight: 700; text-align: right; }
+.chip { padding: 7px 11px; border: 1px solid var(--line); border-radius: 100px; background: none;
+  color: var(--ink-2); font-size: 0.78rem; cursor: pointer; }
+.chip.on { border-color: var(--pitch); color: var(--pitch); font-weight: 700; }
 .stakebtn { flex: 1; min-width: 80px; padding: 11px 14px; border: none; border-radius: 10px;
   background: var(--pitch); color: #fff; font-family: Futura, "Century Gothic", sans-serif; font-weight: 700;
   font-size: 0.9rem; cursor: pointer; }
+.stakebtn.place { min-width: 190px; }
 .stakebtn:hover:not(:disabled) { filter: brightness(1.1); }
 .stakebtn:disabled { opacity: 0.4; cursor: default; }
+
+/* settlement card — the on-chain verification moment */
+.settlement { margin-top: 16px; border-radius: 12px; padding: 16px; border: 1.5px solid var(--line); }
+.settlement.yes { border-color: var(--good); background: var(--good-bg); }
+.settlement.no { background: var(--surface-2); }
+.s-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.s-outcome { font-family: Futura, "Century Gothic", sans-serif; font-weight: 700; font-size: 1.05rem; }
+.settlement.yes .s-outcome { color: var(--good); }
+.s-verified { font-size: 0.7rem; font-family: ui-monospace, Menlo, monospace; color: var(--good);
+  border: 1px solid var(--good); border-radius: 100px; padding: 2px 9px; }
+.s-rows { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; }
+.s-row { display: flex; justify-content: space-between; gap: 14px; }
+.s-row span:first-child { color: var(--ink-3); }
+.s-row a { color: var(--pitch); text-decoration: none; font-weight: 700; }
+.s-row a:hover { text-decoration: underline; }
 .btn2.settle { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
 .bet-hint { margin-top: 10px; font-size: 0.8rem; color: var(--ink-2); background: var(--surface-2);

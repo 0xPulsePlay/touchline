@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { connection, PROGRAM_ID, DEVNET_RPC } from "./config.js";
 import { readChainState, USDC_DECIMALS } from "./tokens.js";
 import {
-  ensureReady, faucet, balance, ensureMarket, placeBet, resolveMarketOnChain, claimBet,
+  ensureReady, faucet, balance, sessionSol, ensureMarket, placeBet, resolveMarketOnChain, claimBet,
   activity, marketBets, listLedgerMarkets, SIDE_IDX,
 } from "./service.js";
 import { receiptForTick } from "../proofs.js";
@@ -12,6 +12,21 @@ import type { Side } from "../model.js";
 
 const KINDS: BetKind[] = ["up", "down", "band", "heartbreak", "comeback"];
 const asKind = (v: unknown): BetKind => (typeof v === "string" && (KINDS as string[]).includes(v) ? (v as BetKind) : "up");
+
+/** Retry once (then twice) with backoff when the public devnet RPC rate-limits (429). */
+async function withRpcRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); }
+    catch (e) {
+      const s = String(e);
+      if (attempt < 2 && (s.includes("429") || s.includes("Too Many Requests"))) {
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
 
 const SIDES: Side[] = ["part1", "draw", "part2"];
 const asSide = (v: unknown): Side | null => (typeof v === "string" && (SIDES as string[]).includes(v) ? (v as Side) : null);
@@ -57,7 +72,8 @@ export function registerChainRoutes(
 
   app.get<{ Querystring: { sessionId: string } }>("/api/balance", async (req) => {
     const b = await balance(req.query.sessionId, conn).catch(() => 0);
-    return { balanceUsdc: b / 10 ** USDC_DECIMALS };
+    const sol = await sessionSol(req.query.sessionId, conn).catch(() => 0);
+    return { balanceUsdc: b / 10 ** USDC_DECIMALS, balanceSol: sol };
   });
 
   /** Dealer quote — kind-aware (up/down/band/heartbreak/comeback), barriers gated per kind. */
@@ -101,9 +117,9 @@ export function registerChainRoutes(
       const cutoffTs = Math.floor(Date.now() / 1000) + 86400; // demo/replay markets stay open 24h
       const venueP = Math.max(0.01, Math.min(0.99, pBps / 10000)); // hedge struck at the side's current win price
       try {
-        const rec = await placeBet(sessionId, label ?? "you", f.fixtureId, side, barrierBps,
+        const rec = await withRpcRetry(() => placeBet(sessionId, label ?? "you", f.fixtureId, side, barrierBps,
           Math.round(amount * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs,
-          { bot: !!bot, venueP, kind, barrier2Bps, epoch: epoch ?? 0 }, conn);
+          { bot: !!bot, venueP, kind, barrier2Bps, epoch: epoch ?? 0 }, conn));
         return {
           sig: rec.sig, marketKey: rec.marketKey, priceBps: q.priceBps, payoutMult: q.payoutMult,
           amountUsdc: amount, payoutUsdc: rec.payout / 10 ** USDC_DECIMALS, kind,
@@ -219,6 +235,7 @@ export function registerChainRoutes(
 function fmtBet(b: import("./service.js").LedgerBet) {
   return {
     sig: b.sig, marketKey: b.marketKey, fixtureId: b.fixtureId, side: b.side, barrierBps: b.barrierBps,
+    kind: b.kind ?? "up", barrier2Bps: b.barrier2Bps ?? null,
     label: b.label, bot: b.bot, ts: b.ts, claimed: b.claimed,
     amountUsdc: b.amount / 10 ** USDC_DECIMALS, priceBps: b.priceBps, payoutUsdc: b.payout / 10 ** USDC_DECIMALS,
     bettor: b.bettor,

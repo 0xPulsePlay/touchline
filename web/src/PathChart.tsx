@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { PathPoint, PhaseTimeline, Side } from "./api.js";
+import type { BetKind, PathPoint, PhaseTimeline, Side } from "./api.js";
 import { buildScale, NOMINAL_END } from "./timeline.js";
 
 const COLOR: Record<Side, string> = { part1: "var(--home)", draw: "var(--draw)", part2: "var(--away)" };
@@ -17,6 +17,10 @@ export interface PathChartProps {
   names: { part1: string; draw: string; part2: string };
   side: Side;
   barrier: number;
+  /** bet kind — draws the barrier(s) + trigger marker to match (default "up") */
+  kind?: BetKind;
+  /** band: the lower edge */
+  barrier2?: number;
   cursor: number;
   /** live/sim: stable projected axis + draw only up to this wall-ts (smooth reveal) */
   live?: { revealTs: number };
@@ -26,7 +30,7 @@ export interface PathChartProps {
 
 const W = 860, H = 310, M = { t: 18, r: 96, b: 30, l: 40 };
 
-export function PathChart({ path, startTime, timeline, names, side, barrier, cursor, live, preNote }: PathChartProps) {
+export function PathChart({ path, startTime, timeline, names, side, barrier, kind = "up", barrier2, cursor, live, preNote }: PathChartProps) {
   const pw = W - M.l - M.r, ph = H - M.t - M.b;
   const lastTs = path[path.length - 1]?.ts ?? startTime;
 
@@ -65,7 +69,14 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
   const line = (key: Side) =>
     visible.map((p, i) => `${i ? "L" : "M"}${X(p.ts).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join(" ");
 
-  const touchIdx = visible.findIndex((p) => p.ts >= startTime && p[side] >= barrier);
+  // kind-aware trigger marker: up/heartbreak look above, down/comeback below, band = either edge
+  const downTrigger = kind === "down" || kind === "comeback";
+  const touchIdx = visible.findIndex((p) => {
+    if (p.ts < startTime) return false;
+    if (downTrigger) return p[side] <= barrier;
+    if (kind === "band") return p[side] >= barrier || p[side] <= (barrier2 ?? 0);
+    return p[side] >= barrier;
+  });
   const touch = touchIdx >= 0 ? visible[touchIdx] : undefined;
   const cur = visible[visible.length - 1];
 
@@ -161,9 +172,17 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
         </g>
       )}
 
-      {/* barrier */}
+      {/* barrier(s) */}
       <line x1={M.l} x2={M.l + pw} y1={Y(barrier)} y2={Y(barrier)} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="6 5" />
-      <text x={M.l + pw + 6} y={Y(barrier) + 4} fill="var(--accent)" className="slabel">B={barrier}%</text>
+      <text x={M.l + pw + 6} y={Y(barrier) + 4} fill="var(--accent)" className="slabel">
+        {kind === "band" ? `U=${barrier}%` : `B=${barrier}%`}
+      </text>
+      {kind === "band" && barrier2 !== undefined && (
+        <g>
+          <line x1={M.l} x2={M.l + pw} y1={Y(barrier2)} y2={Y(barrier2)} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="6 5" opacity={0.7} />
+          <text x={M.l + pw + 6} y={Y(barrier2) + 4} fill="var(--accent)" className="slabel">L={barrier2}%</text>
+        </g>
+      )}
 
       {(["part1", "draw", "part2"] as Side[]).map((k) => (
         <path key={k} d={line(k)} fill="none" stroke={COLOR[k]}
@@ -194,7 +213,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
           <circle cx={X(touch.ts)} cy={Y(touch[side])} r={7} fill="none" stroke="var(--accent)" strokeWidth={2.5} />
           <circle cx={X(touch.ts)} cy={Y(touch[side])} r={2.8} fill="var(--accent)" />
           <text x={X(touch.ts)} y={Y(touch[side]) - 14} textAnchor="middle" fill="var(--accent)" className="slabel">
-            TOUCHED {scale ? scale.labelOf(touch.ts) : ""}
+            {downTrigger ? "DROPPED" : kind === "band" ? "EXIT" : "TOUCHED"} {scale ? scale.labelOf(touch.ts) : ""}
           </text>
         </g>
       )}

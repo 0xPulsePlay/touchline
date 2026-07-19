@@ -17,16 +17,17 @@ const SIDE_IDX: Record<Side, number> = { part1: 0, draw: 1, part2: 2 };
 
 /**
  * On-chain market identity. The program's market PDA seeds are (fixture_id: i64, side: u8,
- * barrier: u16) and the program treats them as opaque — so richer identity is ENCODED into them
- * without a program change:
- *   side u8   = kind*3 + side (up:0-2, down:3-5, band:6-8)
- *   fid  i64  = fixtureId | line<<32 | epoch<<40  (line = probability series, epoch = re-run seed)
- * The ledger keeps the decoded fields; the chain sees stable unique seeds. Band markets carry the
- * lower edge (barrier2) in the ledger + resolution evidence — the chain's `barrier` is the upper edge.
+ * barrier: u16). The program VALIDATES side ≤ 2 and 0 < barrier < 10000, but fixture_id is an
+ * opaque i64 — so richer identity is encoded there without a program change:
+ *   fid i64 = fixtureId | line<<32 | epoch<<40 | kind<<48
+ * (line = probability series, epoch = re-run seed, kind = bet type). Max ≈ 2^50 — safe in JS
+ * number space and in the i64 seed. The ledger keeps the decoded fields; the chain sees stable
+ * unique seeds. Band markets carry the lower edge (barrier2) in the ledger + resolution evidence —
+ * the chain's `barrier` is the upper edge.
  */
-export const sideCode = (kind: BetKind, side: Side): number => KIND_IDX[kind] * 3 + SIDE_IDX[side];
-export const chainFid = (fixtureId: number, line = 0, epoch = 0): number =>
-  fixtureId + line * 2 ** 32 + epoch * 2 ** 40;
+export const sideCode = (_kind: BetKind, side: Side): number => SIDE_IDX[side];
+export const chainFid = (fixtureId: number, line = 0, epoch = 0, kind: BetKind = "up"): number =>
+  fixtureId + line * 2 ** 32 + epoch * 2 ** 40 + KIND_IDX[kind] * 2 ** 48;
 
 export interface MarketOpts { kind?: BetKind; barrier2Bps?: number; line?: number; epoch?: number }
 
@@ -95,6 +96,13 @@ export async function balance(sessionId: string, conn?: Connection): Promise<num
   return tokenBalance(new PublicKey(state.usdcMint), w.keypair.publicKey, c);
 }
 
+/** Session wallet's SOL balance (lamports → SOL). */
+export async function sessionSol(sessionId: string, conn?: Connection): Promise<number> {
+  const c = conn ?? connection();
+  const w = getWallet(sessionId); if (!w) return 0;
+  return (await c.getBalance(w.keypair.publicKey)) / 1e9;
+}
+
 /** Create the on-chain barrier market if it doesn't exist. Returns its PDA key. */
 export async function ensureMarket(
   fixtureId: number, side: Side, barrierBps: number, cutoffTs: number,
@@ -108,7 +116,7 @@ export async function ensureMarket(
   const line = mOpts.line ?? 0;
   const epoch = mOpts.epoch ?? 0;
   const code = sideCode(kind, side);
-  const fid = chainFid(fixtureId, line, epoch);
+  const fid = chainFid(fixtureId, line, epoch, kind);
   const market = marketPda(fid, code, barrierBps);
   const key = market.toBase58();
   if (!(await c.getAccountInfo(market))) {
