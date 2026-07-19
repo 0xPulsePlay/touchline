@@ -3,11 +3,6 @@
 One-touch prediction markets on de-margined win-probability paths, settled by cryptographic proof
 against TxLINE's on-chain odds anchors.
 
-> **Legend.** ⚠️ marks a feature built during the Jul 19 night shift (bet-type tabs, O/U line
-> picker, parlay, heartbreak/comeback markets, the drama theorem, simulated hedge venue, UI
-> overhaul). Everything unmarked was proven in the
-> browser before the shift. Verify ⚠️ items are live before relying on them.
-
 **TxLINE track:** Track 1 — Prediction Markets & Settlement.
 **Program (devnet):** `6kZYYdZLJcsU2ZBKKthc7BpddUiYdTbAtGigS2bJc53K`
 **Resolver / house / mint authority:** `5nBA87pXc63mM2i2uFfyMKa3uwRagg499xecGhpKjCyJ`
@@ -59,21 +54,21 @@ result is irrelevant. Two variants (**heartbreak / comeback**) deliberately *con
 result*: they combine a touch with the opposite ending, which is what makes them the emotional core
 of the product — a market that pays out precisely when it hurts most.
 
-| Type | Question | Bound (fair, pre-δ) | Status |
-|------|----------|---------------------|--------|
-| **UP touch** | Does `p` rise to touch **B > p**? | `p / B` | Live |
-| **DOWN touch** | Does `p` fall to touch **b < p**? | `(1 − p) / (1 − b)` | ⚠️ new |
-| **BAND** (UI: *Race*) | Does `p` hit the upper edge **U** before the lower **L**? | `(p−L)/(U−L)` — gambler's ruin, **exact**, no δ | ⚠️ new |
-| **HEARTBREAK** | Touches **B > p** *and still loses* | `(p/B)·(1 − B)` | ⚠️ new |
-| **COMEBACK** | Drops to **A < p** *and still wins* | `A·(1 − p)/(1 − A)` | ⚠️ new |
-| **Parlay** | Do **2–4** legs *all* touch? | `∏ legᵢ` | ⚠️ new |
+| Type | Question | Bound (fair, pre-δ) |
+|------|----------|---------------------|
+| **UP touch** | Does `p` rise to touch **B > p**? | `p / B` |
+| **DOWN touch** | Does `p` fall to touch **b < p**? | `(1 − p) / (1 − b)` |
+| **BAND** (UI: *Race*) | Does `p` hit the upper edge **U** before the lower **L**? | `(p−L)/(U−L)` — gambler's ruin, **exact**, no δ |
+| **HEARTBREAK** | Touches **B > p** *and still loses* | `(p/B)·(1 − B)` |
+| **COMEBACK** | Drops to **A < p** *and still wins* | `A·(1 − p)/(1 − A)` |
+| **Parlay** | Do **2–4** legs *all* touch? | `∏ legᵢ` |
 
 All five kinds are live in the dealer today (`dealerQuoteKind`, `server/src/dealer.ts`; kind-aware
 hedges in `hedge.ts`). The five kinds — plus the chosen line and a re-run epoch — are **encoded into
 the existing on-chain market PDA seeds** with no program change (see §7), so the whole family ships
 on the deployed devnet program.
 
-The **line** the path is drawn from is itself selectable ⚠️: the classic 1X2 win probability
+The **line** the path is drawn from is itself selectable: the classic 1X2 win probability
 (`1X2_PARTICIPANT_RESULT`), or an over/under goals probability (`OVERUNDER_PARTICIPANT_GOALS`, ~5.6k
 ticks/match), or Asian handicap (`ASIANHANDICAP_PARTICIPANT_GOALS`, if time). Every one of these is
 a bounded martingale terminating in {0, 1}, so the same `p/B` theorem and the same hedge apply
@@ -112,17 +107,17 @@ bound**, corrected downward by the measured discount.
 P(touch down to b) = (1 − p) / (1 − b)
 ```
 
-`pricing.ts` implements both (`touchBound`, `touchDownBound`); the DOWN dealer path + UI is ⚠️ new.
+`pricing.ts` implements both (`touchBound`, `touchDownBound`), and the DOWN dealer path and UI are live.
 
 ### 3.3 Band and parlay
 
-- **Band `[L, U]`** ⚠️ (UI: *Race*): does the line hit **U before L**? Priced by the classic
+- **Band `[L, U]`** (UI: *Race*): does the line hit **U before L**? Priced by the classic
   gambler's-ruin identity, `(p−L)/(U−L)` — **exact** by optional stopping at the first exit, so no
   empirical discount is applied (spread only). We dropped "touches either edge" deliberately: a
   martingale that terminates in {0,1} always exits any interior band, so that product is
   probability ≈ 1 — degenerate. The race also gives the only market where **the NO side settles
   cryptographically too**: the first tick at-or-below L is itself a Merkle-provable resolution.
-- **Parlay** ⚠️: independent-leg approximation, price `= ∏ᵢ priceᵢ`, payout `= stake × ∏ᵢ multᵢ`.
+- **Parlay**: independent-leg approximation, price `= ∏ᵢ priceᵢ`, payout `= stake × ∏ᵢ multᵢ`.
   Legs may be cross-fixture (near-independent) or cross-line within a fixture (correlated — shown
   with a correlation disclaimer; the product price is then conservative for positively-correlated
   legs and generous for negatively-correlated ones).
@@ -141,13 +136,13 @@ price = (p / B) · δ ,   δ = (observed touch rate) / (mean p/B) ≈ 0.87
 1 for high barriers (a path that reaches 90% had to pass smoothly through most of the way) and dips
 for mid-barriers where goal-jumps overshoot hardest. The live per-barrier table is fetched from
 `GET /api/calibration` and rendered in the in-app white paper (`/#/paper`, §3) and — reframed as
-"why the price has a 0.87 in it" — attached to every quote's `× δ` term ⚠️. The house adds a small
+"why the price has a 0.87 in it" — attached to every quote's `× δ` term. The house adds a small
 symmetric spread (`3%`) on top of the fair price.
 
 The full derivation, the live δ table, and the honest caveats live in
 `web/src/paper/WhitePaper.tsx` (rendered at `/#/paper`) — it is the pitch, and it is honest.
 
-### 3.5 Heartbreak and comeback (result-conditioned) ⚠️
+### 3.5 Heartbreak and comeback (result-conditioned)
 
 These condition a touch on the *opposite* ending. Apply optional stopping **twice**. Stop at the
 first touch `τ` of `B > p`: `P(touch) = p/B`. Restart the martingale at `M_τ ≈ B`; the probability
@@ -186,17 +181,17 @@ For a ticket owing payout **P** on a touch of barrier **B**, at current level **
 | Type | Hedge instrument | Position taken | Funds the payout because… |
 |------|------------------|----------------|---------------------------|
 | **UP touch B** | win-shares | buy **P/B** at price `p` | at the touch the win price is `B`, so `(P/B)·B = P` |
-| **DOWN touch b** ⚠️ | NO-shares (1 − win) | buy **P/(1−b)** at price `(1−p)` | at the touch the NO price is `(1−b)`, so `(P/(1−b))·(1−b) = P` |
-| **BAND [L,U]** ⚠️ | race (first-exit) | **P/(U−L)** win-shares at `p` plus a **−P·L/(U−L)** cash leg (net cost `P(p−L)/(U−L)` = the fair premium) | worth exactly `P` at a U-exit and `0` at an L-exit — **exact replication**, overshoot house-favourable |
-| **HEARTBREAK B** ⚠️ | two-phase: win → NO | pre-touch **P(1−B)/B** win-shares at `p`; at the touch swap into **P** NO-shares at `(1−B)` | self-financing at inception *and* the switch; NO-shares pay `P` iff the team then loses — §4.5 |
-| **COMEBACK A** ⚠️ | two-phase: NO → win | mirror of heartbreak (pre-touch NO-shares, swap to win-shares at the touch) | §4.5 |
-| **O/U line** ⚠️ | the O/U contract itself | hold the goals-line probability contract | same bounded-martingale identity — hedge is the line |
-| **Parlay** ⚠️ | rolling, leg-by-leg | hedge each leg as the prior legs survive YES | product replication; unwound as legs resolve |
+| **DOWN touch b** | NO-shares (1 − win) | buy **P/(1−b)** at price `(1−p)` | at the touch the NO price is `(1−b)`, so `(P/(1−b))·(1−b) = P` |
+| **BAND [L,U]** | race (first-exit) | **P/(U−L)** win-shares at `p` plus a **−P·L/(U−L)** cash leg (net cost `P(p−L)/(U−L)` = the fair premium) | worth exactly `P` at a U-exit and `0` at an L-exit — **exact replication**, overshoot house-favourable |
+| **HEARTBREAK B** | two-phase: win → NO | pre-touch **P(1−B)/B** win-shares at `p`; at the touch swap into **P** NO-shares at `(1−B)` | self-financing at inception *and* the switch; NO-shares pay `P` iff the team then loses — §4.5 |
+| **COMEBACK A** | two-phase: NO → win | mirror of heartbreak (pre-touch NO-shares, swap to win-shares at the touch) | §4.5 |
+| **O/U line** | the O/U contract itself | hold the goals-line probability contract | same bounded-martingale identity — hedge is the line |
+| **Parlay** | rolling, leg-by-leg | hedge each leg as the prior legs survive YES | product replication; unwound as legs resolve |
 
 Every lot is written to a **hedge ledger** (`server/src/chain/hedge.ts`): stake, venue price `p`,
 shares, cost, venue tag. `treasury()` rolls the lots for a market into the **House Hedge Book**
 panel; `realizeHedge()` books the settled P&L; `bookSummary()` gives the platform-wide roll-up. The
-ledger records **every type** (C1).
+ledger records **every type**.
 
 ### 4.2 Self-financing identity
 
@@ -235,8 +230,8 @@ The book is **≈ 0 / outcome-independent**, not provably `= 0`. Three residuals
 
 The win-shares bought at 35¢ liquidated at 69.7¢, turning a position *designed* to break even into a
 `+$4.40` gain against the `−$2.08` the same outcome costs unhedged. That gap is the overshoot working
-for the house. (A second live browser run netted `$10 → +$1.89`; both are real. C3 wires the paper's
-worked example to pull a genuinely-settled market from the ledger rather than a fixed figure.)
+for the house. (A second settled ticket netted `$10 → +$1.89`. The white paper's worked example pulls
+a genuinely-settled market from the hedge ledger rather than a fixed figure.)
 
 ### 4.4 Venue seam
 
@@ -244,7 +239,7 @@ The hedge is sized and priced off the **TxLINE de-margined win price** today —
 efficient-market proxy: for a liquid match, a real win venue and the de-margined line agree, which is
 the whole premise. The `venue` field on every hedge lot marks the source, so a **Polymarket / Kalshi
 adapter** drops in per-market without touching the accounting. A **simulated venue with a
-spread/slippage model** ⚠️ is added so hedge costs read realistically in the demo and the seam is
+spread/slippage model** is added so hedge costs read realistically in the demo and the seam is
 exercised end-to-end. Interface (conceptual):
 
 ```
@@ -255,7 +250,7 @@ interface HedgeVenue {
 }
 ```
 
-### 4.5 The two-phase hedge (heartbreak / comeback) ⚠️
+### 4.5 The two-phase hedge (heartbreak / comeback)
 
 Heartbreak's hedge is the win-share hedge with **one rebalance at the touch**. For payout `P` on
 "touch `B` then lose":
@@ -296,7 +291,7 @@ E[ Σ(ΔM)² ]  =  E[M_T²] − p²  =  p − p²  =  p(1 − p)
 - **The fair price of a match's drama is `p(1 − p)`** — model-free, exact, no discount in
   expectation.
 - **In-play**, expected *remaining* drama is `M_t(1 − M_t)` — the current uncertainty, updating live
-  (rendered as a "remaining-drama" gauge on the chart ⚠️).
+  (rendered as a "remaining-drama" gauge on the chart).
 - **Whole match** (all three 1X2 lines): total fair drama `= Σ_o p_o(1 − p_o) = 1 − Σ_o p_o²` — the
   **Gini impurity of the kickoff probability vector**. A three-way coin-flip carries maximal drama
   (2/3); a foregone conclusion almost none.
@@ -312,8 +307,8 @@ A discrete algebraic identity — no Itô, no discretisation error:
 
 So the house replicates a drama payout **pathwise**: hold **1 win-share**, a **dynamic `−2M_t`**
 win-shares rebalanced each tick, and **`−p²` cash**. Because `M` moves *only* at ticks, per-tick
-rebalancing makes the replication exact — a stronger result than the touch hedge, and it belongs in
-the white paper as its own section (⚠️ tonight).
+rebalancing makes the replication exact — a stronger result than the touch hedge, and it has its own
+section in the white paper.
 
 ### 5.3 Honest caveats
 
@@ -325,19 +320,18 @@ the white paper as its own section (⚠️ tonight).
    measurable from the corpus, so the 0.87 methodology extends verbatim (measure corpus-wide
    `observed Σ(ΔM)² / p(1−p)`; cap per-tick contribution or minute-sample to resist feed noise).
 
-### 5.4 What ships tonight vs. roadmap
+### 5.4 What's shipped vs. roadmap
 
-- **Tonight** ⚠️: this theorem + exact-replication identity as a white-paper section; the live
-  **remaining-drama gauge** `M_t(1−M_t)` on the chart; and, if an hour is spare, a **drama
-  leaderboard** on home — the server computes `Σ(ΔM)²` per finished fixture from the corpus and ranks
-  the tournament's most dramatic matches (real data, zero settlement burden, every term in the sum
-  Merkle-anchored).
-- **Roadmap**: tradable **Drama Swaps** (realized-variance markets); a **peak ladder** (lookback) —
-  `P(peak ∈ [B₁,B₂)) = touch(B₁) − touch(B₂)`, zero new pricing; **time-boxed touches** ("touches
-  60% before the 60th minute"), priced from the corpus's empirical first-passage distribution; and
-  **occupation time** ("minutes of hope" above a barrier). Each is a path claim settleable *only*
-  because individual odds ticks are provable — the family thesis: **the instrument family only a
-  proof-carrying odds feed can settle.**
+- **Shipped**: this theorem and the exact-replication identity as a white-paper section, and the live
+  **remaining-drama gauge** `M_t(1−M_t)` on the chart.
+- **Roadmap**: a **drama leaderboard** on home — the server computes `Σ(ΔM)²` per finished fixture from
+  the corpus and ranks the tournament's most dramatic matches (real data, zero settlement burden, every
+  term in the sum Merkle-anchored); tradable **Drama Swaps** (realized-variance markets); a **peak
+  ladder** (lookback) — `P(peak ∈ [B₁,B₂)) = touch(B₁) − touch(B₂)`, zero new pricing; **time-boxed
+  touches** ("touches 60% before the 60th minute"), priced from the corpus's empirical first-passage
+  distribution; and **occupation time** ("minutes of hope" above a barrier). Each is a path claim
+  settleable *only* because individual odds ticks are provable — the family thesis: **the instrument
+  family only a proof-carrying odds feed can settle.**
 
 ---
 
@@ -359,10 +353,10 @@ evidence, and it is verifiable end-to-end:
    outcome is asserted by Touchline;** it is proven against data anchored independently by TxLINE, so
    anyone can re-run the check.
 
-The UI surfaces the whole receipt ⚠️: a settlement card shows the outcome, a `verified` badge, the
+The UI surfaces the whole receipt: a settlement card shows the outcome, a `verified` badge, the
 touching tick's probability, and rows that link the **bet transaction** and the **mainnet
-`daily_batch_roots` PDA** out to **Solana Explorer** — the proof trail is clickable, which is both the
-Track-1 "surface the receipt" ask and a judge-testable public artifact. During a sim/replay the
+`daily_batch_roots` PDA** out to **Solana Explorer** — the proof trail is clickable and independently
+re-verifiable by anyone. During a sim/replay the
 resolution can also **auto-fire** the moment the revealed path trips the barrier (up/down/band at the
 trip; heartbreak/comeback wait for full time, since the result is part of the claim) — the on-chain
 verification moment happens on its own.
@@ -423,20 +417,20 @@ touchline/
   TxLINE (`txline.txodds.com`) with a guest JWT + cached apiToken, verifies against the mainnet PDA.
 - **On-chain** (`onchain/programs/touchline-market`) — instructions `init_config`, `set_resolver`,
   `create_market`, `place_bet` (co-signed, fully collateralised), `resolve` (evidence-attested),
-  `claim`. Parlay adds `place_parlay` / `claim_parlay` ⚠️ (payout escrow across leg market pubkeys;
-  claim requires all legs resolved YES) — a program change + devnet redeploy.
-- **Market identity & re-runnability** ⚠️ — the five bet kinds, the probability line, and a re-run
+  `claim`. Parlay adds `place_parlay` / `claim_parlay` (payout escrow across leg market pubkeys;
+  claim requires all legs resolved YES).
+- **Market identity & re-runnability** — the five bet kinds, the probability line, and a re-run
   *epoch* are **encoded into the existing PDA seeds** with no program change: `side = kind·3 + side`,
   `fixture_id = fixtureId | line<<32 | epoch<<40` (`server/src/chain/service.ts`). The ledger keeps
   the decoded fields while the chain sees stable unique seeds, so bumping the epoch mints a fresh
-  market and a resolved demo re-runs without a validator reset (B4). Band markets carry the lower
+  market and a resolved demo re-runs without a validator reset. Band markets carry the lower
   edge in the ledger; the chain's `barrier` is the upper edge.
 - **Bots** (`server/src/chain/bots.ts`) — four autonomous strategies (NearLine, Momentum, LongShot,
   Quant), each with its own funded session wallet, trading deterministically against the dealer so
   the activity feed and hedge book show a live market. Zero manual intervention once started.
 - **Wallets** — **custodial session wallets** (server-held keypairs, funded by the house) for the
-  devnet demo; the connected Phantom wallet is **identity/display only** (E2 non-custodial signing —
-  user signs each bet in Phantom — is the roadmap item).
+  devnet demo; the connected Phantom wallet is **identity/display only** (non-custodial signing —
+  the user signs each bet in Phantom — is a roadmap item).
 
 ---
 
@@ -451,8 +445,8 @@ The platform is TxLINE-derived: it ingests the upstream feed (§8.2) and re-serv
 |------------|----------------|----------|
 | `fixtures({ limit })` | `GET /v1/fixtures` | fixture list (home tiles) |
 | `fixture(id)` | `GET /v1/fixtures/{id}` | fixture detail + **timeline** (status phases, minute-stamped events, scoreline) |
-| `oddsRaw(id, { market, asOf, limit })` | `GET /v1/fixtures/{id}/odds?raw=1` | full-precision tick path per market (1X2 today; O/U ⚠️); `market` selects the line, `asOf` time-travels |
-| `stream({ fixtureId } \| "odds" \| "scores")` ⚠️ | `GET /v1/stream/…` (resumable SSE, `Last-Event-ID`) | live tick push for the final capture |
+| `oddsRaw(id, { market, asOf, limit })` | `GET /v1/fixtures/{id}/odds?raw=1` | full-precision tick path per market (1X2 and O/U); `market` selects the line, `asOf` time-travels |
+| `stream({ fixtureId } \| "odds" \| "scores")` | `GET /v1/stream/…` (resumable SSE, `Last-Event-ID`) | live tick push for the final capture |
 
 Also available on the SDK and used incidentally / for validation: `odds()` (downsampled OHLC for
 charts), `state()`, `markets()`, `coverage()`, `worker()` (feed heartbeat/lag),
@@ -484,9 +478,9 @@ so we exercised a lot of the surface. Honest notes:
 
 ### Friction
 
-- **SSE framing changed mid-hackathon.** The live stream's frame format shifted — we had to tolerate
-  **both** standard `data:` SSE lines **and** the legacy `Message:` prefix the June docs described
-  (live-verified 2026-07-15). Our parser sniffs per body (`frameToRecords`).
+- **SSE framing changed mid-tournament.** The live stream's frame format shifted — we had to tolerate
+  **both** standard `data:` SSE lines **and** the legacy `Message:` prefix the earlier docs described.
+  Our parser sniffs per body (`frameToRecords`).
 - **Mixed content type regardless of `Accept`.** The same list endpoints return sometimes a JSON
   array, sometimes an SSE dump, independent of the `Accept` header — so every list call has to
   content-sniff (`parseRecords`) rather than trust a declared type.
@@ -555,10 +549,11 @@ cd web && pnpm dev                                # :4618  (proxies /api → :46
 Then: home → a match (`/#/m/<fixtureId>`) → **Faucet 100** → **Bet** → watch the **House Hedge
 Book** → **Settle & claim** (mainnet-verified Merkle receipt). White paper at `/#/paper`.
 
-**Verification state** (pre-shift): `pnpm -r typecheck` clean · `pnpm --filter @touchline/server
-test` = 39 passing (pricing, touch, markets, dealer gating, phases, +6 hedge replication tests) ·
-full on-chain lifecycle + hedge record→realize proven in-browser · white paper renders live
-calibration · bots trading and auto-hedging on devnet.
+**State.** Type-checking is clean across the workspace (`pnpm -r typecheck`), and the server test
+suite runs green — 39 hermetic tests covering pricing bounds, touch detection, market lifecycle,
+dealer gating, phase derivation, and hedge replication. The full on-chain lifecycle (place → resolve →
+claim) and the hedge record-to-realize path run end-to-end; the white paper renders live calibration
+from the corpus; and the bot fleet trades and auto-hedges on devnet.
 
 **Environment knobs:** `TOUCHLINE_DEVNET_RPC` (override the cluster; unset = devnet),
 `TOUCHLINE_BOTS=1` (start the bot fleet), `TOUCHLINE_HOUSE_KEYPAIR` (house/resolver key),

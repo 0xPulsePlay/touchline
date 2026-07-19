@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - The `txline-explorer` engine corpus at `../txline-explorer/apps/api/.data/txline.db`
-  (already present on this machine; opened strictly read-only).
+  (opened strictly read-only).
 - Cached TxLINE credentials at `../txline-explorer/apps/api/.cache/token.json` (present).
 - The built `@txline/verify` package in `../txline-explorer-validation-lab` (present).
 - Node 20+, pnpm.
@@ -18,7 +18,7 @@ pnpm dev        # api on :4617, web on :4618
 
 Open **http://localhost:4618**.
 
-## The 3-minute demo flow
+## Demo walkthrough
 
 1. **Pick the semifinal** (England — Argentina, 1–2) from the left rail — it's preselected.
 2. **Watch the path**: press ▶ to replay 37k ticks; England's line rockets through the 60% barrier
@@ -50,8 +50,8 @@ POST /api/calibration/refresh
 
 ## Notes
 
-- Ports 4617/4618 were chosen to avoid the engine (3001/3002), the explorer web (3000), and the
-  battlefield dev server (5173).
+- Ports 4617/4618 were chosen to avoid clashing with the data platform (3001/3002) and the explorer
+  web (3000).
 - Touchline's own state lives in `server/.data/` (gitignored). Deleting it resets all markets.
 - Upcoming fixtures (the final, 3rd-place match, friendlies) already stream pre-match ticks into
   the corpus — you can open markets on them today; resolution activates once the path exists.

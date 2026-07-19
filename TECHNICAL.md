@@ -10,7 +10,7 @@ Demo video: **[DEMO VIDEO LINK]** · TxLINE data layer: **https://txline-api.ger
 Explorer: **https://txline-explorer.gershwin.dev**
 
 The full derivation, hedging math, and an honest API-feedback section live in
-[`docs/TECHNICAL-WRITEUP.md`](docs/TECHNICAL-WRITEUP.md). This page is the 3-minute version.
+[`docs/TECHNICAL-WRITEUP.md`](docs/TECHNICAL-WRITEUP.md). This page is the short version.
 
 ---
 
@@ -83,7 +83,7 @@ touchline/
 ## 3 · The specific TxLINE endpoints used
 
 TxLINE is the **primary live input** for both the probability path (the tradable underlying) and the
-settlement proof (the resolution evidence). Three layers, all grounded in code:
+settlement proof (the resolution evidence). It arrives in three layers:
 
 **A. Direct upstream calls Touchline's server makes to `https://txline.txodds.com`**
 (`TXLINE_API_BASE`, `server/src/config.ts`):

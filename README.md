@@ -68,9 +68,9 @@ touchline/
 ```
 
 Upstream (read-only, never modified): the `txline-explorer` engine corpus + cached TxLINE
-credentials, and `@txline/verify` from the validation-lab worktree (file: dependency).
+credentials, and the `@txline/verify` package (a local `file:` dependency).
 
-## TxLINE endpoints used (hackathon submission requirement)
+## TxLINE endpoints used
 
 - `GET /api/odds/validation?messageId&ts` — the Merkle proof per odds tick (settlement evidence)
 - `POST /auth/guest/start` — guest JWT refresh
