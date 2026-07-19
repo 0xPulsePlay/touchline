@@ -65,27 +65,23 @@ export function Home() {
         <div className="tl-home-inner">
           <header className="tl-hero">
             <div className="tl-hero-glow" aria-hidden="true" />
-            <p className="tl-hero-kicker">One-touch markets · anchored on Solana</p>
+            <p className="tl-hero-kicker">Live path markets · Solana-settled</p>
             <h1 className="tl-hero-title">
-              Pick a path. <span className="tl-hero-em">Name your barrier.</span>
+              Trade the probability path. <span className="tl-hero-em">Set the barrier.</span>
             </h1>
             <p className="tl-hero-lede">
-              One-touch markets on de-margined win-probability paths — priced by the{" "}
-              <b>p/B martingale bound</b>, settled by a Merkle proof of a single odds tick anchored on
-              Solana. Rebuilt from <b>{fmtTicks(stats.ticks)}</b> anchored ticks across the corpus.
+              Trade whether a team&apos;s win probability touches a defined level before full time.
+              Prices follow the <b>p/B martingale bound</b>; settlement uses a Merkle proof of one
+              odds tick anchored on Solana.
             </p>
             <div className="tl-hero-stats mono">
-              {stats.live > 0 && (
-                <>
-                  <span className="tl-hero-live"><span className="tl-dot" aria-hidden="true" /> <b>{stats.live}</b> live now</span>
-                  <span className="tl-sep" aria-hidden="true" />
-                </>
-              )}
-              <span><b>{stats.count || "—"}</b> matches</span>
+              <span className={`tl-hero-live${stats.live === 0 ? " idle" : ""}`}><span className="tl-dot" aria-hidden="true" /> <b>{stats.live}</b> live markets</span>
               <span className="tl-sep" aria-hidden="true" />
-              <span><b>{fmtTicks(stats.ticks)}</b> anchored ticks</span>
+              <span><b>{stats.count || "—"}</b> listed fixtures</span>
               <span className="tl-sep" aria-hidden="true" />
-              <a className="tl-hero-paper" href="#/paper">Read the math →</a>
+              <span><b>{fmtTicks(stats.ticks)}</b> verified ticks</span>
+              <span className="tl-sep" aria-hidden="true" />
+              <a className="tl-hero-paper" href="#/paper">Pricing methodology →</a>
             </div>
           </header>
 

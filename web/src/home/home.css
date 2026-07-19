@@ -4,8 +4,10 @@
  * comes from the shared design tokens, so light + dark are inherited for free.
  * ════════════════════════════════════════════════════════════════════════ */
 
-.tl-home { width: 100%; }
+.tl-home { width: 100%; max-width: 100%; overflow-x: clip; }
 .tl-home-inner {
+  width: 100%;
+  min-width: 0;
   max-width: 1200px;
   margin-inline: auto;
   padding: 0 clamp(16px, 4vw, 40px) 72px;
@@ -14,36 +16,33 @@
 /* ── hero / masthead ─────────────────────────────────────────────────── */
 .tl-hero {
   position: relative;
-  padding: clamp(26px, 5vw, 46px) 0 26px;
+  padding: clamp(24px, 4vw, 38px) 0 22px;
   border-bottom: 1px solid var(--line);
   overflow: hidden;
 }
 .tl-hero-glow {
   position: absolute;
-  inset: -55% -10% auto -12%;
-  height: 380px;
+  inset: 0 0 auto;
+  height: 1px;
   pointer-events: none;
-  background:
-    radial-gradient(58% 80% at 16% 24%, color-mix(in srgb, var(--pitch) 24%, transparent), transparent 70%),
-    radial-gradient(48% 72% at 90% 8%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%);
-  filter: blur(10px);
-  opacity: 0.55;
+  background: linear-gradient(90deg, var(--pitch), color-mix(in srgb, var(--pitch) 18%, transparent) 38%, transparent 72%);
+  opacity: 0.42;
 }
 .tl-hero-kicker {
   position: relative;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   font-family: Futura, "Century Gothic", sans-serif;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
 .tl-hero-kicker::before {
   content: "";
   display: inline-block;
-  width: 22px; height: 2px;
-  margin-right: 10px; vertical-align: middle;
+  width: 12px; height: 1px;
+  margin-right: 8px; vertical-align: middle;
   background: var(--pitch);
 }
 .tl-hero-title {
@@ -51,66 +50,66 @@
   margin: 0;
   font-family: Futura, "Century Gothic", "Trebuchet MS", sans-serif;
   font-weight: 700;
-  font-size: clamp(2rem, 6.2vw, 3.4rem);
-  line-height: 1.02;
-  letter-spacing: -0.015em;
-  max-width: 15ch;
+  font-size: clamp(1.72rem, 4.5vw, 2.45rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  max-width: 24ch;
+  text-wrap: balance;
 }
 .tl-hero-em {
-  color: var(--pitch);
-  font-style: italic;
+  color: var(--ink-2);
+  font-style: normal;
   position: relative;
-  white-space: nowrap;
-}
-.tl-hero-em::after {
-  content: "";
-  position: absolute;
-  left: 0.02em; right: 0.06em; bottom: 0.02em;
-  height: 0.09em;
-  background: color-mix(in srgb, var(--pitch) 55%, transparent);
-  border-radius: 2px;
 }
 .tl-hero-lede {
   position: relative;
-  margin: 18px 0 0;
-  max-width: 60ch;
+  margin: 15px 0 0;
+  max-width: 72ch;
   font-family: Charter, Georgia, serif;
-  font-size: 1.02rem;
-  line-height: 1.55;
+  font-size: 0.94rem;
+  line-height: 1.58;
   color: var(--ink-2);
+  text-wrap: pretty;
 }
 .tl-hero-lede b { color: var(--ink); font-weight: 600; }
 .tl-hero-stats {
   position: relative;
   display: flex; align-items: center; flex-wrap: wrap;
-  gap: 8px 14px;
-  margin-top: 22px;
-  font-size: 0.82rem;
+  gap: 8px 13px;
+  margin-top: 18px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.72rem;
   color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
 }
-.tl-hero-stats b { color: var(--ink); font-weight: 700; }
+.tl-hero-stats b { color: var(--ink); font-size: 0.8rem; font-weight: 700; }
 .tl-hero-stats .tl-sep { width: 1px; height: 13px; background: var(--line); }
 .tl-hero-live { display: inline-flex; align-items: center; gap: 7px; color: var(--live); }
 .tl-hero-live b { color: var(--live); }
-.tl-hero-paper { color: var(--accent); text-decoration: none; font-weight: 700;
+.tl-hero-live.idle { color: var(--ink-3); }
+.tl-hero-live.idle b { color: var(--ink-2); }
+.tl-hero-live.idle .tl-dot { background: var(--ink-3); animation: none; }
+.tl-hero-paper { color: var(--pitch); text-decoration: none; font-weight: 700;
   border-bottom: 1px solid transparent; padding-bottom: 1px; }
-.tl-hero-paper:hover { border-bottom-color: var(--accent); }
+.tl-hero-paper:hover { border-bottom-color: var(--pitch); }
 
 /* ── controls / search ───────────────────────────────────────────────── */
 .tl-controls {
   display: flex; align-items: center; gap: 14px;
-  margin-top: 22px;
+  margin-top: 18px;
 }
 .tl-search { position: relative; flex: 1; max-width: 440px; }
 .tl-search input {
   width: 100%;
-  padding: 11px 34px 11px 40px;
+  min-height: 42px;
+  padding: 9px 34px 9px 40px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md, 10px);
   background: var(--surface);
   color: var(--ink);
   font-family: Charter, Georgia, serif;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 .tl-search input::placeholder { color: var(--ink-3); }
 .tl-search input:focus {
@@ -124,12 +123,19 @@
 }
 .tl-search-clear {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  width: 24px; height: 24px; border: none; border-radius: 50%;
+  width: 30px; height: 30px; border: none; border-radius: 50%;
   background: var(--surface-2); color: var(--ink-2);
   font-size: 1.05rem; line-height: 1; cursor: pointer;
 }
 .tl-search-clear:hover { background: var(--line); color: var(--ink); }
 .tl-count { color: var(--ink-3); font-size: 0.8rem; white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .tl-hero-stats { gap: 7px 16px; }
+  .tl-hero-stats .tl-sep { display: none; }
+  .tl-search { max-width: none; }
+  .tl-count { display: none; }
+}
 
 /* ── section rubrics ─────────────────────────────────────────────────── */
 .tl-section { margin-top: 8px; }
