@@ -184,7 +184,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, kin
         </g>
       )}
 
-      {(["part1", "draw", "part2"] as Side[]).map((k) => (
+      {(["part1", "draw", "part2"] as Side[]).filter((k) => names[k] !== "").map((k) => (
         <path key={k} d={line(k)} fill="none" stroke={COLOR[k]}
           strokeWidth={k === side ? 2.6 : 1.4} opacity={k === side ? 1 : 0.55}
           strokeLinejoin="round" strokeLinecap="round" />
@@ -194,6 +194,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, kin
       {cur &&
         (() => {
           const entries = (["part1", "draw", "part2"] as Side[])
+            .filter((k) => names[k] !== "")
             .map((k) => ({ k, y: Y(cur[k]) }))
             .sort((a, b) => a.y - b.y);
           for (let i = 1; i < entries.length; i++) {

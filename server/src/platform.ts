@@ -44,23 +44,47 @@ export async function getFixture(fixtureId: number): Promise<FixtureRow | undefi
   return (await listFixtures()).find((f) => f.fixtureId === fixtureId);
 }
 
-/** Full-precision 1X2 path (full-match variable), optionally truncated server-side via asOf. */
-export async function pathFor(fixtureId: number, asOf?: number): Promise<PathTick[]> {
+/**
+ * Probability LINES a market can be built on. Line 0 = the 1X2 win probabilities. Line 1 = the
+ * O/U 2.5-goals probability (over → part1 slot, under → part2 slot, draw slot unused). Every line
+ * is a de-margined probability that terminates in {0,1} — the same martingale, so the same touch
+ * theorem, gates, and hedges apply verbatim.
+ */
+export interface LineDef { id: number; label: string; market: string; params?: string; names: { part1: string; draw: string; part2: string } }
+export const LINES: LineDef[] = [
+  { id: 0, label: "Match odds (1X2)", market: "1X2_PARTICIPANT_RESULT", names: { part1: "", draw: "Draw", part2: "" } },
+  { id: 1, label: "Over/Under 2.5 goals", market: "OVERUNDER_PARTICIPANT_GOALS", params: "line=2.5", names: { part1: "Over 2.5", draw: "", part2: "Under 2.5" } },
+];
+
+/** Full-precision probability path for a line (default 1X2), optionally truncated via asOf. */
+export async function pathFor(fixtureId: number, asOf?: number, line = 0): Promise<PathTick[]> {
+  const def = LINES.find((l) => l.id === line) ?? LINES[0]!;
   const res = await client.oddsRaw(fixtureId, {
-    market: "1X2_PARTICIPANT_RESULT",
+    market: def.market,
     ...(asOf !== undefined ? { asOf } : {}),
     limit: 100_000,
   });
   const out: PathTick[] = [];
   for (const t of res.ticks) {
-    if ((t.MarketPeriod ?? "") !== "") continue; // full-match variable only
-    const names = t.PriceNames ?? [];
-    const pct = (t.Pct ?? []).map(Number);
-    const i1 = names.indexOf("part1"), ix = names.indexOf("draw"), i2 = names.indexOf("part2");
-    if (i1 < 0 || ix < 0 || i2 < 0) continue;
-    const p1 = pct[i1], dr = pct[ix], p2 = pct[i2];
-    if (![p1, dr, p2].every((v) => Number.isFinite(v))) continue;
-    out.push({ ts: t.Ts, messageId: t.MessageId, part1: p1!, draw: dr!, part2: p2! });
+    if (def.id === 0) {
+      if ((t.MarketPeriod ?? "") !== "") continue; // full-match variable only
+      const names = t.PriceNames ?? [];
+      const pct = (t.Pct ?? []).map(Number);
+      const i1 = names.indexOf("part1"), ix = names.indexOf("draw"), i2 = names.indexOf("part2");
+      if (i1 < 0 || ix < 0 || i2 < 0) continue;
+      const p1 = pct[i1], dr = pct[ix], p2 = pct[i2];
+      if (![p1, dr, p2].every((v) => Number.isFinite(v))) continue;
+      out.push({ ts: t.Ts, messageId: t.MessageId, part1: p1!, draw: dr!, part2: p2! });
+    } else {
+      if ((t.MarketParameters ?? "") !== def.params) continue;
+      const names = t.PriceNames ?? [];
+      const pct = (t.Pct ?? []).map(Number);
+      const io = names.indexOf("over"), iu = names.indexOf("under");
+      if (io < 0 || iu < 0) continue;
+      const ov = pct[io], un = pct[iu];
+      if (![ov, un].every((v) => Number.isFinite(v))) continue; // some ticks carry Pct: NA
+      out.push({ ts: t.Ts, messageId: t.MessageId, part1: ov!, draw: 0, part2: un! });
+    }
   }
   out.sort((a, b) => a.ts - b.ts);
   return out;

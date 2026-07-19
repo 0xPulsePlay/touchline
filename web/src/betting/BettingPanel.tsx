@@ -35,9 +35,11 @@ export interface BettingPanelProps {
   fullEndTs?: number | null;
   /** notify the parlay ticket that a leg was added */
   onTicket?: () => void;
+  /** probability line the market is built on (0 = 1X2) */
+  line?: number;
 }
 
-export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs, onTicket }: BettingPanelProps) {
+export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs, onTicket, line = 0 }: BettingPanelProps) {
   const sid = sessionId();
   const [chain, setChain] = useState<ChainState | null>(null);
   const [bal, setBal] = useState<number | null>(null);
@@ -62,12 +64,12 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
   useEffect(() => {
     let dead = false;
     const fetchQuote = () =>
-      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined)
+      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined, line)
         .then((q) => !dead && setQuote(q)).catch(() => {});
     void fetchQuote();
     const id = setInterval(fetchQuote, 15_000);
     return () => { dead = true; clearInterval(id); };
-  }, [fixture.fixtureId, side, barrier, barrier2, kind]);
+  }, [fixture.fixtureId, side, barrier, barrier2, kind, line]);
 
   // activity feed polls — scoped to the selected kind
   useEffect(() => {
@@ -107,7 +109,7 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
     setBusy("bet"); setSettled(null);
     setMsg({ kind: "ok", text: "Confirming on devnet — co-signing + escrowing the payout…" });
     try {
-      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt });
+      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt, line });
       lastBet.current = { sig: r.sig, marketKey: r.marketKey, kind, side, barrier, barrier2 };
       setMsg({ kind: "ok", text: `Position live on-chain — ${usd(r.amountUsdc)} → ${usd(r.payoutUsdc)} if it hits.` });
       refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
@@ -202,10 +204,10 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
 
       {/* side + barrier(s) */}
       <div className="picker">
-        <div className="seg" role="group" aria-label="team">
-          {(["part1", "draw", "part2"] as Side[]).map((k) => (
+        <div className="seg" role="group" aria-label="side">
+          {(["part1", "draw", "part2"] as Side[]).filter((k) => names[k] !== "").map((k) => (
             <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
-              {k === "draw" ? "🤝 Draw" : `${flag(names[k])} ${names[k]}`}
+              {k === "draw" ? "🤝 Draw" : line > 0 ? names[k] : `${flag(names[k])} ${names[k]}`}
             </button>
           ))}
         </div>

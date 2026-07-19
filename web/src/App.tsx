@@ -26,6 +26,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
   const [barrier, setBarrier] = useState(60);
   const [barrier2, setBarrier2] = useState(20);
   const [ticketV, setTicketV] = useState(0);
+  const [line, setLine] = useState(0);
   const [cal, setCal] = useState<Calibration | null>(null);
   const [cursor, setCursor] = useState(1e9);
   const [playing, setPlaying] = useState(false);
@@ -57,14 +58,14 @@ export function App({ fixtureId }: { fixtureId: number }) {
     setRevealTs(null);
     fullEndRef.current = null;
     setErr(null);
-    api.path(fixtureId).then((r) => {
+    api.path(fixtureId, { line }).then((r) => {
       if (dead) return;
       setSel(r.fixture);
       setPathRes(r);
       fullEndRef.current = r.path[r.path.length - 1]?.ts ?? r.fixture.startTime;
     }).catch((e) => { if (!dead) setErr(String(e)); });
     return () => { dead = true; };
-  }, [fixtureId]);
+  }, [fixtureId, line]);
 
   const isLive = sel ? groupOf(sel, Date.now()) === "live" : false;
   const simActive = !!simUi;
@@ -83,7 +84,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
         asOf = sim.now;
       }
       try {
-        const r = await api.path(fid, { asOf });
+        const r = await api.path(fid, { asOf, line });
         if (dead) return;
         setPathRes(r);
         setCursor(1e9); // follow the leading edge
@@ -107,7 +108,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
         if (sim && sim.now >= sim.endTs) {
           simRef.current = null;
           setSimUi(null);
-          const full = await api.path(fid);
+          const full = await api.path(fid, { line });
           if (!dead) {
             setPathRes(full);
             fullEndRef.current = full.path[full.path.length - 1]?.ts ?? null;
@@ -118,7 +119,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
     void tick();
     const id = setInterval(tick, 2000);
     return () => { dead = true; clearInterval(id); cancelAnimationFrame(revealAnim.current); };
-  }, [sel, isLive, simActive]);
+  }, [sel, isLive, simActive, line]);
 
   const startSim = () => {
     if (!sel || fullEndRef.current == null) return;
@@ -131,7 +132,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
     simRef.current = null;
     setSimUi(null);
     setRevealTs(null);
-    if (sel) api.path(sel.fixtureId).then((r) => {
+    if (sel) api.path(sel.fixtureId, { line }).then((r) => {
       setPathRes(r);
       fullEndRef.current = r.path[r.path.length - 1]?.ts ?? null;
     }).catch(() => {});
@@ -158,10 +159,14 @@ export function App({ fixtureId }: { fixtureId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, pathRes]);
 
-  const names = useMemo(
-    () => sel ? { part1: sel.participant1, draw: "Draw", part2: sel.participant2 } : { part1: "", draw: "Draw", part2: "" },
-    [sel],
-  );
+  const names = useMemo(() => {
+    if (!sel) return { part1: "", draw: "Draw", part2: "" };
+    if (line > 0) {
+      const ln = pathRes?.lines?.find((l) => l.id === line);
+      if (ln) return ln.names;
+    }
+    return { part1: sel.participant1, draw: "Draw", part2: sel.participant2 };
+  }, [sel, line, pathRes?.lines]);
 
   const clockLabel = useMemo(() => {
     if (!pathRes) return null;
@@ -244,6 +249,12 @@ export function App({ fixtureId }: { fixtureId: number }) {
             <section className="panel">
               <div className="panelhead">
                 <h2>Probability path</h2>
+                {(pathRes?.lines?.length ?? 0) > 1 && (
+                  <select className="linepick" value={line} aria-label="probability line"
+                    onChange={(e) => { setLine(Number(e.target.value)); setSide("part1"); }}>
+                    {pathRes!.lines!.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                  </select>
+                )}
                 {sel.isFinal && !simUi && !noInPlayData && (
                   <button className="simbtn" onClick={startSim} title="replay this match through the live pipeline">
                     ⚡ Simulate live
@@ -325,6 +336,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
               simActive={!!simUi || isLive}
               fullEndTs={fullEndRef.current}
               onTicket={() => setTicketV((v) => v + 1)}
+              line={line}
             />
 
             <TicketPanel version={ticketV} onChanged={() => setTicketV((v) => v + 1)} />

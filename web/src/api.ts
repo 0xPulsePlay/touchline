@@ -38,11 +38,15 @@ export interface PhaseTimeline {
   scoreline?: { ts: number; p1: number; p2: number }[];
 }
 
+export interface LineInfo { id: number; label: string; names: { part1: string; draw: string; part2: string } }
+
 export interface PathResponse {
   fixture: Fixture;
   opening: PathPoint | null;
   tickCount: number;
   asOf: number | null;
+  line?: number;
+  lines?: LineInfo[];
   timeline: PhaseTimeline;
   path: PathPoint[];
 }
@@ -122,8 +126,8 @@ async function j<T>(r: Response): Promise<T> {
 
 export const api = {
   fixtures: () => fetch("/api/fixtures").then((r) => j<Fixture[]>(r)),
-  path: (id: number, opts: { every?: number; asOf?: number } = {}) =>
-    fetch(`/api/fixtures/${id}/path?every=${opts.every ?? 4}${opts.asOf ? `&asOf=${opts.asOf}` : ""}`)
+  path: (id: number, opts: { every?: number; asOf?: number; line?: number } = {}) =>
+    fetch(`/api/fixtures/${id}/path?every=${opts.every ?? 4}${opts.asOf ? `&asOf=${opts.asOf}` : ""}${opts.line ? `&line=${opts.line}` : ""}`)
       .then((r) => j<PathResponse>(r)),
   quote: (id: number, side: Side, barrier: number) =>
     fetch(`/api/fixtures/${id}/quote?side=${side}&barrier=${barrier}`).then((r) => j<Quote>(r)),
@@ -148,9 +152,9 @@ export const api = {
   faucet: (sessionId: string, label: string, usdc = 100) =>
     fetch("/api/faucet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, label, usdc }) }).then((r) => j<{ pubkey: string; balanceUsdc: number }>(r)),
   balance: (sessionId: string) => fetch(`/api/balance?sessionId=${sessionId}`).then((r) => j<{ balanceUsdc: number; balanceSol: number }>(r)),
-  dealerQuote: (fixtureId: number, side: Side, barrier: number, kind: BetKind = "up", barrier2?: number) =>
-    fetch(`/api/dealer/quote?fixtureId=${fixtureId}&side=${side}&barrier=${barrier}&kind=${kind}${barrier2 !== undefined ? `&barrier2=${barrier2}` : ""}`).then((r) => j<DealerQuote>(r)),
-  bet: (b: { sessionId: string; label: string; fixtureId: number; side: Side; barrier: number; barrier2?: number; kind?: BetKind; usdc: number; epoch?: number }) =>
+  dealerQuote: (fixtureId: number, side: Side, barrier: number, kind: BetKind = "up", barrier2?: number, line = 0) =>
+    fetch(`/api/dealer/quote?fixtureId=${fixtureId}&side=${side}&barrier=${barrier}&kind=${kind}${barrier2 !== undefined ? `&barrier2=${barrier2}` : ""}${line ? `&line=${line}` : ""}`).then((r) => j<DealerQuote>(r)),
+  bet: (b: { sessionId: string; label: string; fixtureId: number; side: Side; barrier: number; barrier2?: number; kind?: BetKind; usdc: number; epoch?: number; line?: number }) =>
     fetch("/api/bet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then((r) => j<BetResult>(r)),
   resolveOnchain: (marketKey: string) => fetch(`/api/market/${marketKey}/resolve`, { method: "POST" }).then((r) => j<ResolveResult>(r)),
   claim: (sig: string) => fetch("/api/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sig }) }).then((r) => j<{ sig: string }>(r)),

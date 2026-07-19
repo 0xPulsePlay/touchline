@@ -452,3 +452,6 @@ a.brand:hover { opacity: 0.82; }
    previously carried by the mobile switcher, always shows here */
 .main.detail { max-width: 940px; margin: 0 auto; overflow: visible; }
 .main.detail .matchhead { display: flex; }
+
+.linepick { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  color: var(--ink); font-size: 0.78rem; font-family: Futura, "Century Gothic", sans-serif; cursor: pointer; }

@@ -40,7 +40,7 @@ export function registerChainRoutes(
   app: FastifyInstance,
   deps: {
     getFixture: (id: number) => Promise<{ fixtureId: number; startTime: number; participant1: string; participant2: string; isFinal: boolean; finalP1?: number | null; finalP2?: number | null } | undefined>;
-    pathFor: (id: number, asOf?: number) => Promise<{ ts: number; messageId: string; part1: number; draw: number; part2: number }[]>;
+    pathFor: (id: number, asOf?: number, line?: number) => Promise<{ ts: number; messageId: string; part1: number; draw: number; part2: number }[]>;
     openingProbe: (path: { ts: number; part1: number; draw: number; part2: number }[], startTime: number) => { part1: number; draw: number; part2: number } | undefined;
     discount: () => number;
   },
@@ -78,7 +78,7 @@ export function registerChainRoutes(
   });
 
   /** Dealer quote — kind-aware (up/down/band/heartbreak/comeback), barriers gated per kind. */
-  app.get<{ Querystring: { fixtureId: string; side: string; barrier: string; kind?: string; barrier2?: string } }>(
+  app.get<{ Querystring: { fixtureId: string; side: string; barrier: string; kind?: string; barrier2?: string; line?: string } }>(
     "/api/dealer/quote",
     async (req, reply) => {
       const f = await deps.getFixture(Number(req.query.fixtureId));
@@ -86,7 +86,9 @@ export function registerChainRoutes(
       const side = asSide(req.query.side);
       if (!side) return reply.code(400).send({ error: "bad side" });
       const kind = asKind(req.query.kind);
-      const path = await deps.pathFor(f.fixtureId);
+      const line = req.query.line ? Number(req.query.line) : 0;
+      if (line > 0 && side === "draw") return reply.code(400).send({ error: "this line has no draw side" });
+      const path = await deps.pathFor(f.fixtureId, undefined, line);
       const open = deps.openingProbe(path, f.startTime);
       // current probability = latest tick's side value (live), else opening
       const pBps = Math.round((open?.[side] ?? 0) * 100);
@@ -97,7 +99,7 @@ export function registerChainRoutes(
   );
 
   /** Place a bet at the current gated dealer quote (server prices + co-signs). Kind-aware. */
-  app.post<{ Body: { sessionId: string; label?: string; fixtureId: number; side: string; barrier: number; barrier2?: number; kind?: string; usdc: number; epoch?: number; bot?: boolean } }>(
+  app.post<{ Body: { sessionId: string; label?: string; fixtureId: number; side: string; barrier: number; barrier2?: number; kind?: string; usdc: number; epoch?: number; line?: number; bot?: boolean } }>(
     "/api/bet",
     async (req, reply) => {
       const { sessionId, label, fixtureId, usdc, bot, epoch } = req.body ?? ({} as any);
@@ -106,7 +108,9 @@ export function registerChainRoutes(
       const kind = asKind(req.body?.kind);
       const f = await deps.getFixture(Number(fixtureId));
       if (!f) return reply.code(404).send({ error: "unknown fixture" });
-      const path = await deps.pathFor(f.fixtureId);
+      const line = req.body.line ?? 0;
+      if (line > 0 && side === "draw") return reply.code(400).send({ error: "this line has no draw side" });
+      const path = await deps.pathFor(f.fixtureId, undefined, line);
       const open = deps.openingProbe(path, f.startTime);
       const pBps = Math.round((open?.[side] ?? 0) * 100);
       const barrierBps = Math.round(req.body.barrier * 100);
@@ -120,7 +124,7 @@ export function registerChainRoutes(
       try {
         const rec = await withRpcRetry(() => placeBet(sessionId, label ?? "you", f.fixtureId, side, barrierBps,
           Math.round(amount * 10 ** USDC_DECIMALS), q.priceBps, cutoffTs,
-          { bot: !!bot, venueP, kind, barrier2Bps, epoch: epoch ?? 0 }, conn));
+          { bot: !!bot, venueP, kind, barrier2Bps, epoch: epoch ?? 0, line }, conn));
         return {
           sig: rec.sig, marketKey: rec.marketKey, priceBps: q.priceBps, payoutMult: q.payoutMult,
           amountUsdc: amount, payoutUsdc: rec.payout / 10 ** USDC_DECIMALS, kind,
@@ -146,7 +150,7 @@ export function registerChainRoutes(
     const f = await deps.getFixture(lm.fixtureId);
     if (!f) return reply.code(404).send({ error: "unknown fixture" });
     const kind = lm.kind ?? "up";
-    const path = await deps.pathFor(lm.fixtureId);
+    const path = await deps.pathFor(lm.fixtureId, undefined, lm.line ?? 0);
     const inPlay = path.filter((t) => t.ts >= f.startTime);
     const bPct = lm.barrierBps / 100;
     const b2Pct = (lm.barrier2Bps ?? 0) / 100;

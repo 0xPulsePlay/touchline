@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { config } from "./config.js";
-import { getFixture, listFixtures, openingProbe, pathFor, timelineFor } from "./platform.js";
+import { getFixture, listFixtures, openingProbe, pathFor, timelineFor, LINES } from "./platform.js";
 import { SIDES, type Side } from "./model.js";
 import { quoteTouch, touchBound } from "./pricing.js";
 import { firstTouch, maxPct } from "./touch.js";
@@ -38,14 +38,15 @@ app.get("/api/fixtures", async () => listFixtures());
  * `asOf` truncates EVERYTHING (ticks, transitions, clock) to that instant — live and simulated
  * consumers see exactly what was knowable then; the server does not leak the future.
  */
-app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string } }>(
+app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string; line?: string } }>(
   "/api/fixtures/:id/path",
   async (req, reply) => {
     try {
       const f = await getFixture(Number(req.params.id));
       if (!f) return reply.code(404).send({ error: "unknown fixture" });
       const asOf = req.query.asOf ? Number(req.query.asOf) : undefined;
-      const path = await pathFor(f.fixtureId, asOf);
+      const line = req.query.line ? Number(req.query.line) : 0;
+      const path = await pathFor(f.fixtureId, asOf, line);
       const every = Math.max(1, Number(req.query.every ?? 5));
       const thin = path.filter((_, i) => i % every === 0 || i === path.length - 1);
       const open = openingProbe(path, f.startTime);
@@ -56,6 +57,8 @@ app.get<{ Params: { id: string }; Querystring: { every?: string; asOf?: string }
         opening: open,
         tickCount: path.length,
         asOf: asOf ?? null,
+        line,
+        lines: LINES.map((l) => ({ id: l.id, label: l.label, names: l.names })),
         timeline,
         path: thin.map((t) => ({ ts: t.ts, part1: t.part1, draw: t.draw, part2: t.part2 })),
       };
