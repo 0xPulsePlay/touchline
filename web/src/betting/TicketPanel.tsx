@@ -20,7 +20,7 @@ export const TicketPanel = memo(function TicketPanel({ version, onChanged }: { v
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [placed, setPlaced] = useState<ParlayResult | null>(null);
-  const [settledMsg, setSettledMsg] = useState<{ outcome: string; sig: string; payout: number } | null>(null);
+  const [settledMsg, setSettledMsg] = useState<{ outcome: string; sig: string; payout: number; method?: string } | null>(null);
 
   useEffect(() => { setLegs(readTicket()); }, [version]);
 
@@ -51,11 +51,13 @@ export const TicketPanel = memo(function TicketPanel({ version, onChanged }: { v
     if (!placed) return;
     setBusy("settle"); setMsg("Resolving every leg with its Merkle proof…");
     try {
+      let method: string | undefined;
       for (const leg of placed.legs) {
-        await api.resolveOnchain(leg.marketKey).catch(() => {}); // already-resolved legs are fine
+        const res = await api.resolveOnchain(leg.marketKey).catch(() => null); // already-resolved legs are fine
+        method = method ?? res?.receipt?.method ?? undefined;
       }
       const r = await api.claimParlay(placed.key);
-      setSettledMsg({ outcome: r.outcome, sig: r.sig, payout: r.payoutUsdc });
+      setSettledMsg({ outcome: r.outcome, sig: r.sig, payout: r.payoutUsdc, method: method ?? "validateStatV3 · two-level multiproof" });
       setMsg(null);
     } catch (e) { setMsg(String(e).slice(0, 200)); } finally { setBusy(null); }
   };
@@ -134,6 +136,7 @@ export const TicketPanel = memo(function TicketPanel({ version, onChanged }: { v
           </div>
           <div className="s-rows mono">
             <div className="s-row"><span>claim tx</span><a href={explorerTx(settledMsg.sig)} target="_blank" rel="noreferrer">{settledMsg.sig.slice(0, 8)}…{settledMsg.sig.slice(-6)} ↗</a></div>
+            {settledMsg.method && <div className="s-row"><span>validation</span><span>{settledMsg.method}</span></div>}
           </div>
         </div>
       )}

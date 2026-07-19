@@ -522,3 +522,8 @@
 .tk-note { font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
   font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 .panel.ticket { padding-bottom: 18px; }
+
+/* breathing room beneath the hedge book + settlement card inside the ticket */
+.hedgebook { margin-bottom: 18px; }
+.settlement { margin-bottom: 18px; }
+.panel.bet { padding-bottom: 20px; }

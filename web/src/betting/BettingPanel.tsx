@@ -334,7 +334,7 @@ export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide,
                 <a href={explorerAddr(settled.receipt.verification.pda, false)} target="_blank" rel="noreferrer">{settled.receipt.verification.pda.slice(0, 8)}… ↗</a></div>
             )}
             {settled.receipt && <div className="s-row"><span>deciding tick</span><span>{settled.receipt.messageId.slice(0, 24)}…</span></div>}
-            {settled.receipt?.method && <div className="s-row"><span>validation</span><span>{settled.receipt.method}</span></div>}
+            {settled.receipt && <div className="s-row"><span>validation</span><span>{settled.receipt.method ?? "validateStatV3 · two-level multiproof"}</span></div>}
             {settled.hedge && (
               <div className="s-row"><span>house hedge net</span>
                 <span>{settled.hedge.net >= 0 ? "+" : ""}{usd(settled.hedge.net)} (unhedged: {usd(settled.hedge.unhedgedNet)})</span></div>
