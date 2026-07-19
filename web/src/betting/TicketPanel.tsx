@@ -82,24 +82,33 @@ export function TicketPanel({ version, onChanged }: { version: number; onChanged
           </div>
           {legs.length < 2 && <div className="dim">Add {2 - legs.length} more leg{legs.length === 1 ? "" : "s"} (any match, any market type).</div>}
           {quote && legs.length >= 2 && (
-            <div className="q-body">
-              <div className="q-price"><span className="big mono">{(quote.combinedPriceBps / 100).toFixed(1)}%</span><span className="q-sub">combined price</span></div>
-              <div className="q-arrow">→</div>
-              <div className="q-payout"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">if every leg hits</span></div>
+            <>
+              <div className="q-row">
+                <div className="q-price"><span className="big mono">{(quote.combinedPriceBps / 100).toFixed(1)}%</span><span className="q-sub">combined price</span></div>
+                <div className="q-payout right"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">if every leg hits</span></div>
+              </div>
               <div className="q-decomp mono">{quote.legs.map((l) => `${(l.priceBps / 100).toFixed(0)}%`).join(" × ")}</div>
-            </div>
+            </>
           )}
           {legs.length >= 2 && (
-            <div className="bet-actions">
-              <div className="stakebox">
-                <span className="mono blabel">stake</span>
-                <input className="stakein mono" type="number" min={1} max={10} step={1} value={stake}
-                  onChange={(e) => setStake(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} aria-label="parlay stake" />
+            <>
+              <div className="stake-row">
+                <span className="ticket-label">Stake</span>
+                <div className="stake-controls">
+                  <input className="stakein mono" type="number" min={1} max={10} step={1} value={stake}
+                    onChange={(e) => setStake(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} aria-label="parlay stake" />
+                  <div className="stake-seg" role="group" aria-label="quick stake">
+                    {[2, 5, 10].map((v) => (
+                      <button key={v} className={stake === v ? "on" : ""} onClick={() => setStake(v)}>{v}</button>
+                    ))}
+                  </div>
+                  {quote && <span className="towin mono">to win {usd(stake * quote.payoutMult)}</span>}
+                </div>
               </div>
-              <button className="stakebtn place" disabled={busy === "place" || !quote} onClick={place}>
+              <button className="stakebtn place cta" disabled={busy === "place" || !quote} onClick={place}>
                 {busy === "place" ? "Confirming…" : `Place ${legs.length}-leg parlay`}
               </button>
-            </div>
+            </>
           )}
         </>
       )}

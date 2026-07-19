@@ -405,3 +405,6 @@
   .tl-tile { transition: border-color 0.2s ease, background 0.2s ease; }
   .tl-tile:hover { transform: none; }
 }
+
+/* loading state: the skeleton grid needs the same breathing room a section rubric provides */
+.tl-controls + .tl-grid { margin-top: 26px; }

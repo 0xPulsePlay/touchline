@@ -61,15 +61,18 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
 
   // quote follows kind/side/barriers (gated on the server); re-polls so a transient API
   // hiccup can't leave the panel stuck quoteless with a dead button
+  // during sim/live the quote re-prices off the CURRENT probability (the reveal edge), bucketed
+  // to ~4s so the tween doesn't spam the API; browsing without a sim prices the pre-match book
+  const asOfBucket = simActive && revealTs != null ? Math.floor(revealTs / 4000) * 4000 : undefined;
   useEffect(() => {
     let dead = false;
     const fetchQuote = () =>
-      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined, line)
+      api.dealerQuote(fixture.fixtureId, side, barrier, kind, kind === "band" ? barrier2 : undefined, line, asOfBucket)
         .then((q) => !dead && setQuote(q)).catch(() => {});
     void fetchQuote();
     const id = setInterval(fetchQuote, 15_000);
     return () => { dead = true; clearInterval(id); };
-  }, [fixture.fixtureId, side, barrier, barrier2, kind, line]);
+  }, [fixture.fixtureId, side, barrier, barrier2, kind, line, asOfBucket]);
 
   // activity feed polls — scoped to the selected kind
   useEffect(() => {
@@ -109,7 +112,7 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
     setBusy("bet"); setSettled(null);
     setMsg({ kind: "ok", text: "Confirming on devnet: co-signing + escrowing the payout…" });
     try {
-      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt, line });
+      const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt, line, asOf: asOfBucket });
       lastBet.current = { sig: r.sig, marketKey: r.marketKey, kind, side, barrier, barrier2 };
       setMsg({ kind: "ok", text: `Position live on-chain: ${usd(r.amountUsdc)} → ${usd(r.payoutUsdc)} if it hits.` });
       refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
@@ -261,9 +264,12 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
           <div className="stake-controls">
             <input className="stakein mono" type="number" min={1} max={cap} step={1} value={stake}
               onChange={(e) => setStake(Math.max(1, Math.min(cap, Number(e.target.value) || 1)))} aria-label="stake in USDC" />
-            {[2, 5, 10].map((v) => (
-              <button key={v} className={`chip${stake === v ? " on" : ""}`} onClick={() => setStake(v)}>${v}</button>
-            ))}
+            <div className="stake-seg" role="group" aria-label="quick stake">
+              {[2, 5, 10].map((v) => (
+                <button key={v} className={stake === v ? "on" : ""} onClick={() => setStake(v)}>{v}</button>
+              ))}
+              <button className={stake === cap ? "on" : ""} onClick={() => setStake(cap)}>Max</button>
+            </div>
             {quote?.valid && <span className="towin mono">to win {usd(stake * quote.payoutMult)}</span>}
           </div>
         </div>

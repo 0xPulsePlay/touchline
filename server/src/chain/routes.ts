@@ -78,7 +78,7 @@ export function registerChainRoutes(
   });
 
   /** Dealer quote — kind-aware (up/down/band/heartbreak/comeback), barriers gated per kind. */
-  app.get<{ Querystring: { fixtureId: string; side: string; barrier: string; kind?: string; barrier2?: string; line?: string } }>(
+  app.get<{ Querystring: { fixtureId: string; side: string; barrier: string; kind?: string; barrier2?: string; line?: string; asOf?: string } }>(
     "/api/dealer/quote",
     async (req, reply) => {
       const f = await deps.getFixture(Number(req.query.fixtureId));
@@ -88,10 +88,14 @@ export function registerChainRoutes(
       const kind = asKind(req.query.kind);
       const line = req.query.line ? Number(req.query.line) : 0;
       if (line > 0 && side === "draw") return reply.code(400).send({ error: "this line has no draw side" });
-      const path = await deps.pathFor(f.fixtureId, undefined, line);
+      const asOf = req.query.asOf ? Number(req.query.asOf) : undefined;
+      const path = await deps.pathFor(f.fixtureId, asOf, line);
+      // p at the observation instant: with asOf (sim/live) the last revealed tick; else the
+      // pre-match opening (browsing a market before kickoff prices the pre-match book)
+      const last = asOf !== undefined ? path[path.length - 1] : undefined;
       const open = deps.openingProbe(path, f.startTime);
-      // current probability = latest tick's side value (live), else opening
-      const pBps = Math.round((open?.[side] ?? 0) * 100);
+      const pSrc = last ?? open;
+      const pBps = Math.round((pSrc?.[side] ?? 0) * 100);
       const barrierBps = Math.round(Number(req.query.barrier) * 100);
       const barrier2Bps = req.query.barrier2 !== undefined ? Math.round(Number(req.query.barrier2) * 100) : undefined;
       return dealerQuoteKind(kind, side, pBps, barrierBps, deps.discount(), { barrier2Bps });
@@ -99,7 +103,7 @@ export function registerChainRoutes(
   );
 
   /** Place a bet at the current gated dealer quote (server prices + co-signs). Kind-aware. */
-  app.post<{ Body: { sessionId: string; label?: string; fixtureId: number; side: string; barrier: number; barrier2?: number; kind?: string; usdc: number; epoch?: number; line?: number; bot?: boolean } }>(
+  app.post<{ Body: { sessionId: string; label?: string; fixtureId: number; side: string; barrier: number; barrier2?: number; kind?: string; usdc: number; epoch?: number; line?: number; asOf?: number; bot?: boolean } }>(
     "/api/bet",
     async (req, reply) => {
       const { sessionId, label, fixtureId, usdc, bot, epoch } = req.body ?? ({} as any);
@@ -110,9 +114,12 @@ export function registerChainRoutes(
       if (!f) return reply.code(404).send({ error: "unknown fixture" });
       const line = req.body.line ?? 0;
       if (line > 0 && side === "draw") return reply.code(400).send({ error: "this line has no draw side" });
-      const path = await deps.pathFor(f.fixtureId, undefined, line);
+      const asOf = req.body.asOf;
+      const path = await deps.pathFor(f.fixtureId, asOf, line);
+      const last = asOf !== undefined ? path[path.length - 1] : undefined;
       const open = deps.openingProbe(path, f.startTime);
-      const pBps = Math.round((open?.[side] ?? 0) * 100);
+      const pSrc = last ?? open;
+      const pBps = Math.round((pSrc?.[side] ?? 0) * 100);
       const barrierBps = Math.round(req.body.barrier * 100);
       const barrier2Bps = req.body.barrier2 !== undefined ? Math.round(req.body.barrier2 * 100) : undefined;
       const q = dealerQuoteKind(kind, side, pBps, barrierBps, deps.discount(), { barrier2Bps });
