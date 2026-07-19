@@ -229,7 +229,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
         {!sel ? (
           err ? (
             <div className="empty">
-              Couldn’t load this match — {err}.{" "}
+              Couldn’t load this match ({err}).{" "}
               <a href="#/" style={{ color: "var(--pitch)" }}>← Back to matches</a>
             </div>
           ) : (
@@ -347,12 +347,12 @@ export function App({ fixtureId }: { fixtureId: number }) {
 
             <TicketPanel version={ticketV} onChanged={() => setTicketV((v) => v + 1)} />
 
-            <section className="panel">
-              <h2>Calibration</h2>
+            <details className="panel cal-acc">
+              <summary><h2>Calibration</h2><span className="cal-chev" aria-hidden="true">▾</span></summary>
               {cal ? (
                 <>
                   <div className="calhead">
-                    <b>~87%</b> — how often real paths touch, as a share of the p/B bound
+                    <b>~87%</b>: how often real paths touch, as a share of the p/B bound
                     ({cal.fixtures} matches, {cal.samples.length} paths).
                   </div>
                   {cal.buckets.filter((b) => b.n >= 30).map((b) => (
@@ -371,7 +371,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
               ) : (
                 <div className="empty">Loading calibration…</div>
               )}
-            </section>
+            </details>
             </div>
           </div>
         )}

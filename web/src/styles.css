@@ -567,3 +567,44 @@ a.brand:hover { opacity: 0.82; }
   .dright .stakebtn.place { min-width: 0; }
   .dright .stakein { width: 60px; }
 }
+
+/* ── iteration 2: left column fixed to viewport; right-rail ticket cleanup ── */
+@media (min-width: 1180px) {
+  /* the left side never scrolls: chart on top, the tape fills ONLY the leftover space */
+  .dleft {
+    display: flex; flex-direction: column;
+    height: calc(100vh - 76px);
+    overflow: hidden;
+  }
+  .dleft .panel:first-of-type { flex: none; }
+  .tape { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: 14px; }
+  .tape .act-list { flex: 1; min-height: 0; overflow-y: auto; }
+}
+
+/* contract-type dropdown */
+.kindsel { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--ink); font-size: 0.9rem; cursor: pointer; }
+.kindsel:focus { outline: none; border-color: var(--pitch); }
+
+/* price left, payout pinned right */
+.q-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-top: 4px; }
+.q-payout.right { text-align: right; }
+.q-payout.right .big { color: var(--pitch); }
+.q-decomp { margin: 8px 0 0; font-size: 0.72rem; color: var(--ink-3); }
+
+/* stake row */
+.stake-row { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.stake-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.towin { margin-left: auto; font-size: 0.8rem; color: var(--pitch); font-weight: 700; }
+
+/* CTA: always full width, never clipped */
+.stakebtn.place.cta { display: block; width: 100%; margin-top: 12px; min-width: 0; }
+.secondary-actions { display: flex; gap: 8px; margin-top: 8px; }
+.btn2.wide { flex: 1; text-align: center; }
+
+/* calibration accordion */
+.cal-acc summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.cal-acc summary::-webkit-details-marker { display: none; }
+.cal-acc summary h2 { margin: 0; }
+.cal-acc .cal-chev { margin-left: auto; color: var(--ink-3); transition: transform 0.12s ease; }
+.cal-acc[open] .cal-chev { transform: rotate(180deg); }

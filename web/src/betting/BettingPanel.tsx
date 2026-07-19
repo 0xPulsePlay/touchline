@@ -12,8 +12,8 @@ const KIND_META: Record<BetKind, { icon: string; label: string; blurb: (name: st
   up: { icon: "↗", label: "Touch up", blurb: (n, U) => `${n} touches ${U}%?` },
   down: { icon: "↘", label: "Touch down", blurb: (n, U) => `${n} drops to ${U}%?` },
   band: { icon: "⇅", label: "Race", blurb: (n, U, L) => `${n} hits ${U}% before ${L}%?` },
-  heartbreak: { icon: "💔", label: "Heartbreak", blurb: (n, U) => `${n} touches ${U}% — and still loses?` },
-  comeback: { icon: "🔄", label: "Comeback", blurb: (n, U) => `${n} drops to ${U}% — and still wins?` },
+  heartbreak: { icon: "💔", label: "Heartbreak", blurb: (n, U) => `${n} touches ${U}%, and still loses?` },
+  comeback: { icon: "🔄", label: "Comeback", blurb: (n, U) => `${n} drops to ${U}%, and still wins?` },
 };
 
 const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
@@ -107,11 +107,11 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
     if (!quote?.valid) { setMsg({ kind: "err", text: quote?.reason ?? "invalid barrier" }); return; }
     const usdcAmt = Math.max(1, Math.min(cap, stake));
     setBusy("bet"); setSettled(null);
-    setMsg({ kind: "ok", text: "Confirming on devnet — co-signing + escrowing the payout…" });
+    setMsg({ kind: "ok", text: "Confirming on devnet: co-signing + escrowing the payout…" });
     try {
       const r = await api.bet({ sessionId: sid, label: "you", fixtureId: fixture.fixtureId, side, barrier, barrier2: kind === "band" ? barrier2 : undefined, kind, usdc: usdcAmt, line });
       lastBet.current = { sig: r.sig, marketKey: r.marketKey, kind, side, barrier, barrier2 };
-      setMsg({ kind: "ok", text: `Position live on-chain — ${usd(r.amountUsdc)} → ${usd(r.payoutUsdc)} if it hits.` });
+      setMsg({ kind: "ok", text: `Position live on-chain: ${usd(r.amountUsdc)} → ${usd(r.payoutUsdc)} if it hits.` });
       refreshBal(); refreshTreasury(); api.activity().then(setActivity).catch(() => {});
     } catch (e) { setMsg({ kind: "err", text: String(e) }); } finally { setBusy(null); }
   };
@@ -121,7 +121,7 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
     if (!lb || settling.current) return;
     settling.current = true;
     setBusy("settle");
-    if (auto) setMsg({ kind: "ok", text: "Trigger hit — resolving on-chain with the Merkle proof…" });
+    if (auto) setMsg({ kind: "ok", text: "Trigger hit. Resolving on-chain with the Merkle proof…" });
     try {
       const res = await api.resolveOnchain(lb.marketKey);
       if (res.outcome === "yes") {
@@ -180,7 +180,7 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
 
   const decomp = () => {
     if (!quote?.valid) return null;
-    if (kind === "band") return `(p−L)/(U−L) = (${pctBps(quote.pBps)}−${barrier2})/(${barrier}−${barrier2}) — exact`;
+    if (kind === "band") return `(p−L)/(U−L) = (${pctBps(quote.pBps)}−${barrier2})/(${barrier}−${barrier2}) · exact`;
     if (kind === "down" || kind === "comeback") return `(1−p)/(1−B) ${kind === "comeback" ? "× A " : ""}× ${quote.discount.toFixed(2)}`;
     if (kind === "heartbreak") return `p/B × (1−B) = ${pctBps(quote.boundBps)} × ${(1 - barrier / 100).toFixed(2)} × ${quote.discount.toFixed(2)}`;
     return `p/B ${pctBps(quote.pBps)}/${barrier} = ${pctBps(quote.boundBps)} × ${quote.discount.toFixed(2)}`;
@@ -204,13 +204,12 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
       {/* the five instruments */}
       <div className="instrument-picker">
         <span className="ticket-label">Contract type</span>
-        <div className="kindtabs" role="tablist" aria-label="market type">
+        <select className="kindsel mono" aria-label="market type" value={kind}
+          onChange={(e) => { setKind(e.target.value as BetKind); setSettled(null); }}>
           {(Object.keys(KIND_META) as BetKind[]).map((k) => (
-            <button key={k} role="tab" aria-selected={kind === k} className={`ktab${kind === k ? " on" : ""}`} onClick={() => { setKind(k); setSettled(null); }}>
-              <span className="kicon" aria-hidden="true">{KIND_META[k].icon}</span> {KIND_META[k].label}
-            </button>
+            <option key={k} value={k}>{KIND_META[k].icon}  {KIND_META[k].label}</option>
           ))}
-        </div>
+        </select>
       </div>
 
       {/* side + barrier(s) */}
@@ -246,46 +245,48 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
 
       <div className="quote-card">
         {quote?.valid && (
-          <div className="q-body">
-            <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
-            <div className="q-arrow">→</div>
-            <div className="q-payout"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it hits</span></div>
+          <>
+            <div className="q-row">
+              <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
+              <div className="q-payout right"><span className="big mono">{quote.payoutMult.toFixed(2)}×</span><span className="q-sub">payout if it hits</span></div>
+            </div>
             <div className="q-decomp mono">
               {decomp()}
               <a className="q-paper" href="#/paper"> · how?</a>
             </div>
-          </div>
+          </>
         )}
-        <div className="bet-actions">
-          <div className="stakebox">
-            <span className="mono blabel">stake</span>
+        <div className="stake-row">
+          <span className="ticket-label">Stake</span>
+          <div className="stake-controls">
             <input className="stakein mono" type="number" min={1} max={cap} step={1} value={stake}
               onChange={(e) => setStake(Math.max(1, Math.min(cap, Number(e.target.value) || 1)))} aria-label="stake in USDC" />
             {[2, 5, 10].map((v) => (
               <button key={v} className={`chip${stake === v ? " on" : ""}`} onClick={() => setStake(v)}>${v}</button>
             ))}
-          </div>
-          <div className="execution-actions">
-            <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
-              {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
-            </button>
-            <button className="btn2" disabled={!quote?.valid} title="add this selection to the parlay ticket"
-              onClick={() => {
-                addLeg({
-                  fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
-                  side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
-                });
-                onTicket?.();
-              }}>
-              ＋ Parlay leg
-            </button>
-            {lastBet.current && !settled && !simActive && (
-              <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
-            )}
+            {quote?.valid && <span className="towin mono">to win {usd(stake * quote.payoutMult)}</span>}
           </div>
         </div>
+        <button className="stakebtn place cta" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
+          {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
+        </button>
+        <div className="secondary-actions">
+          <button className="btn2 wide" disabled={!quote?.valid} title="add this selection to the parlay ticket"
+            onClick={() => {
+              addLeg({
+                fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
+                side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
+              });
+              onTicket?.();
+            }}>
+            ＋ Add to parlay
+          </button>
+          {lastBet.current && !settled && !simActive && (
+            <button className="btn2 settle wide" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
+          )}
+        </div>
         {quote?.valid && (bal ?? 0) < stake && busy !== "bet" && (
-          <div className="bet-hint">Balance too low — grab devnet funds from the <b>wallet</b> in the top bar.</div>
+          <div className="bet-hint">Balance too low. Grab devnet funds from the <b>wallet</b> in the top bar.</div>
         )}
         {msg && <div className={`bet-msg ${msg.kind}`}>{msg.text}</div>}
       </div>
@@ -294,7 +295,7 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
       {settled && (
         <div className={`settlement ${settled.outcome}`}>
           <div className="s-head">
-            <span className="s-outcome">{settled.outcome === "yes" ? "✓ Resolved YES — payout claimed" : "Resolved NO"}</span>
+            <span className="s-outcome">{settled.outcome === "yes" ? "✓ Resolved YES · payout claimed" : "Resolved NO"}</span>
             {settled.verified && <span className="s-verified">Merkle-verified against mainnet ✓</span>}
           </div>
           <div className="s-rows mono">
@@ -342,8 +343,8 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
       )}
 
       <div className="activity">
-        <div className="act-head">{meta.icon} {meta.label} — live activity</div>
-        {scoped.length === 0 && <div className="dim">No {meta.label.toLowerCase()} tickets yet — yours can be the first.</div>}
+        <div className="act-head">{meta.icon} {meta.label} · live activity</div>
+        {scoped.length === 0 && <div className="dim">No {meta.label.toLowerCase()} tickets yet. Yours can be the first.</div>}
         {scoped.length > 0 && (
           <div className="act-columns mono" aria-hidden="true">
             <span>Account</span><span>Contract</span><span>Price</span>

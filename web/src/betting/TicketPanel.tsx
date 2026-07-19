@@ -106,7 +106,7 @@ export function TicketPanel({ version, onChanged }: { version: number; onChanged
 
       {placed && !settledMsg && (
         <div className="bet-msg ok">
-          Parlay live on-chain — {usd(placed.amountUsdc)} → {usd(placed.payoutUsdc)} if all {placed.legs.length} legs hit.{" "}
+          Parlay live on-chain: {usd(placed.amountUsdc)} → {usd(placed.payoutUsdc)} if all {placed.legs.length} legs hit.{" "}
           <a href={explorerTx(placed.sig)} target="_blank" rel="noreferrer">tx ↗</a>
           <button className="btn2 settle" style={{ marginLeft: 10 }} onClick={settle} disabled={busy === "settle"}>
             {busy === "settle" ? "Settling…" : "Settle all legs & claim →"}
@@ -116,7 +116,7 @@ export function TicketPanel({ version, onChanged }: { version: number; onChanged
       {settledMsg && (
         <div className={`settlement ${settledMsg.outcome}`}>
           <div className="s-head">
-            <span className="s-outcome">{settledMsg.outcome === "yes" ? `✓ All legs hit — ${usd(settledMsg.payout)} claimed` : "A leg missed — house reclaims"}</span>
+            <span className="s-outcome">{settledMsg.outcome === "yes" ? `✓ All legs hit: ${usd(settledMsg.payout)} claimed` : "A leg missed. House reclaims"}</span>
           </div>
           <div className="s-rows mono">
             <div className="s-row"><span>claim tx</span><a href={explorerTx(settledMsg.sig)} target="_blank" rel="noreferrer">{settledMsg.sig.slice(0, 8)}…{settledMsg.sig.slice(-6)} ↗</a></div>
