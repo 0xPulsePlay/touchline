@@ -94,6 +94,12 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, kin
         <line x1={X(visible[visible.length - 1]!.ts)} x2={X(visible[visible.length - 1]!.ts)}
           y1={M.t} y2={M.t + ph} stroke="var(--live)" strokeWidth={1.5} opacity={0.8} />
       )}
+      {/* remaining-drama gauge: E[remaining Σ(ΔM)²] = M_t(1−M_t) for the selected line (see the paper) */}
+      {live && cur && names[side] !== "" && (
+        <text x={M.l + 4} y={M.t + 12} fill="var(--ink-3)" style={{ fontSize: 9, letterSpacing: "0.06em" }}>
+          ⚡ remaining drama {((cur[side] / 100) * (1 - cur[side] / 100)).toFixed(3)}
+        </text>
+      )}
 
       {/* compressed break bands, drawn first */}
       {!preMatch && scale?.segments

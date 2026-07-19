@@ -9,9 +9,18 @@ import "./paper.css";
  * across the corpus, the net-zero hedge that offsets each ticket, and the on-chain settlement.
  * Calibration numbers are fetched live so the discount table is never stale.
  */
+interface RealizedExample {
+  outcome: "yes" | "no"; touchProb: number; premiums: number; hedgeCost: number; hedgeValue: number;
+  paid: number; net: number; unhedgedNet: number; kind: string; barrierBps: number; venueP: number; shares: number;
+}
+
 export function WhitePaper() {
   const [cal, setCal] = useState<Calibration | null>(null);
-  useEffect(() => { api.calibration().then(setCal).catch(() => {}); }, []);
+  const [real, setReal] = useState<RealizedExample | null>(null);
+  useEffect(() => {
+    api.calibration().then(setCal).catch(() => {});
+    fetch("/api/hedge/latest-realized").then((r) => (r.ok ? r.json() : null)).then(setReal).catch(() => {});
+  }, []);
 
   const buckets = (cal?.buckets ?? []).filter((b) => b.discount != null);
   const meanDisc = buckets.length ? buckets.reduce((a, b) => a + (b.discount ?? 0), 0) / buckets.length : 0.87;
@@ -33,8 +42,10 @@ export function WhitePaper() {
           <nav className="pp-toc mono">
             <a href="#s1">1 · The instrument</a>
             <a href="#s2">2 · The p/B touch bound</a>
+            <a href="#s2b">✦ The instrument family</a>
             <a href="#s3">3 · The empirical discount</a>
             <a href="#s4">4 · The hedge: net-zero replication</a>
+            <a href="#s4b">✦ The drama theorem</a>
             <a href="#s5">5 · Settlement &amp; verification</a>
             <a href="#s6">6 · Honest caveats</a>
           </nav>
@@ -105,6 +116,36 @@ export function WhitePaper() {
             So <span className="m">p/B</span> is an <b>upper bound</b>, and we must correct it down with a
             number measured from data.
           </div>
+        </section>
+
+        {/* the instrument family */}
+        <section id="s2b" className="pp-sec">
+          <h2><span className="pp-num">✦</span> The instrument family</h2>
+          <p>
+            The same one-line argument prices a whole family. Every quote below follows from the
+            martingale property alone — no model, no simulation:
+          </p>
+          <div className="pp-tablewrap">
+            <table className="pp-table">
+              <thead><tr><th>Market</th><th>Pays when…</th><th>Fair price</th><th>Why</th></tr></thead>
+              <tbody>
+                <tr><td><b>↗ Touch up</b></td><td>the line touches B from p</td><td className="mono">(p/B)·δ</td><td>optional stopping</td></tr>
+                <tr><td><b>↘ Touch down</b></td><td>the line drops to A</td><td className="mono">((1−p)/(1−A))·δ</td><td>1−M is a martingale too</td></tr>
+                <tr><td><b>⇅ Race</b></td><td>it hits U <em>before</em> L</td><td className="mono">(p−L)/(U−L)</td><td>gambler's ruin — <b>exact</b>, no δ</td></tr>
+                <tr><td><b>💔 Heartbreak</b></td><td>touches B <em>and still loses</em></td><td className="mono">(p/B)(1−B)·δ</td><td>optional stopping, applied twice</td></tr>
+                <tr><td><b>🔄 Comeback</b></td><td>drops to A <em>and still wins</em></td><td className="mono">A·(1−p)/(1−A)·δ</td><td>the mirror</td></tr>
+                <tr><td><b>Parlay</b></td><td>every leg hits</td><td className="mono">∏ leg prices</td><td>product pricing, one escrow</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            The heartbreak derivation in one breath: stop the martingale at the first touch τ of B
+            (probability <span className="m">p/B</span>); restart it at <span className="m">M_τ ≈ B</span>;
+            from there the team loses with probability <span className="m">1−B</span>. Jump overshoot cuts{" "}
+            <em>both</em> factors, so the bound stays one-sided — the same house-favourable structure as p/B.
+            The launch example is the point: England's semifinal line touched 69.7% and they lost 1–2 —{" "}
+            <b>a heartbreak that resolved YES</b>, settled by one Merkle proof plus the final score.
+          </p>
         </section>
 
         {/* 3 — the discount */}
@@ -202,25 +243,55 @@ export function WhitePaper() {
             <em>is</em> a probability.
           </p>
 
+          <h3>Every instrument has a replicating position</h3>
+          <div className="pp-tablewrap">
+            <table className="pp-table">
+              <thead><tr><th>Market</th><th>The house holds…</th><th>At the trigger it's worth…</th></tr></thead>
+              <tbody>
+                <tr><td>↗ up</td><td className="mono">P/B win-shares @ p</td><td className="mono">P (shares trade at B)</td></tr>
+                <tr><td>↘ down</td><td className="mono">P/(1−A) NO-shares @ (1−p)</td><td className="mono">P (NO price is 1−A)</td></tr>
+                <tr><td>⇅ race</td><td className="mono">P/(U−L) win-shares − P·L/(U−L) cash</td><td className="mono">P at U-exit, 0 at L-exit — <b>exact</b></td></tr>
+                <tr><td>💔 heartbreak</td><td className="mono">P(1−B)/B win-shares @ p</td><td className="mono">sell at the touch (worth P(1−B)), buy P NO-shares at (1−B) — <b>exactly self-financing</b>; they pay P iff the team loses</td></tr>
+                <tr><td>🔄 comeback</td><td className="mono">P·A/(1−A) NO-shares @ (1−p)</td><td className="mono">the mirrored two-phase switch</td></tr>
+                <tr><td>parlay</td><td className="mono">leg-1 position, rolled</td><td className="mono">each touch rolls the book into the next leg</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Each position's cost equals its fair premium — <b>self-financing at inception</b>, every kind.
+            These aren't projections: the identities above are unit-tested in the codebase and every lot
+            is recorded in the live hedge ledger.
+          </p>
+
           <h3>What the hedge actually does to risk</h3>
           <p>
             The hedge's real job is to make the house's P&amp;L <b>independent of the outcome</b>. Without
             it, a touch costs the house the full payout; with it, the book lands in the same small place
-            whether the barrier is touched or not. A worked example from the live book:
+            whether the barrier is touched or not. {real ? <b>A real settled ticket from this deployment's ledger:</b> : "A worked example from the live book:"}
           </p>
-          <div className="pp-worked mono">
-            <div className="pp-worked-row"><span>premiums collected</span><span>$6.00</span></div>
-            <div className="pp-worked-row"><span>win-shares bought (P/B) at p = 35¢</span><span>cost $6.70</span></div>
-            <div className="pp-worked-row pp-worked-sep"><span className="pp-risk">unhedged, if it touches</span><span className="pp-risk">−$2.08</span></div>
-            <div className="pp-worked-row"><span>hedged, if it touches at B (no overshoot)</span><span>−$0.70</span></div>
-            <div className="pp-worked-row"><span>hedged, if it never touches</span><span>−$0.70</span></div>
-            <div className="pp-worked-row pp-worked-sep"><span className="pp-good">actually settled — line jumped to 69.7%</span><span className="pp-good">+$4.40</span></div>
-          </div>
+          {real ? (
+            <div className="pp-worked mono">
+              <div className="pp-worked-row"><span>market</span><span>{real.kind} @ {(real.barrierBps / 100).toFixed(0)}% — resolved {real.outcome.toUpperCase()}</span></div>
+              <div className="pp-worked-row"><span>premiums collected</span><span>${real.premiums.toFixed(2)}</span></div>
+              <div className="pp-worked-row"><span>hedge position bought at {(real.venueP * 100).toFixed(0)}¢</span><span>cost ${real.hedgeCost.toFixed(2)}</span></div>
+              <div className="pp-worked-row"><span>payout owed</span><span>${real.paid.toFixed(2)}</span></div>
+              <div className="pp-worked-row pp-worked-sep"><span className="pp-risk">unhedged, this settlement</span><span className="pp-risk">{real.unhedgedNet < 0 ? "−" : "+"}${Math.abs(real.unhedgedNet).toFixed(2)}</span></div>
+              <div className="pp-worked-row"><span className="pp-good">hedged — position liquidated at {(real.touchProb * 100).toFixed(1)}%</span><span className="pp-good">{real.net < 0 ? "−" : "+"}${Math.abs(real.net).toFixed(2)}</span></div>
+            </div>
+          ) : (
+            <div className="pp-worked mono">
+              <div className="pp-worked-row"><span>premiums collected</span><span>$6.00</span></div>
+              <div className="pp-worked-row"><span>win-shares bought (P/B) at p = 35¢</span><span>cost $6.70</span></div>
+              <div className="pp-worked-row pp-worked-sep"><span className="pp-risk">unhedged, if it touches</span><span className="pp-risk">−$2.08</span></div>
+              <div className="pp-worked-row"><span>hedged, if it touches at B (no overshoot)</span><span>−$0.70</span></div>
+              <div className="pp-worked-row"><span>hedged, if it never touches</span><span>−$0.70</span></div>
+              <div className="pp-worked-row pp-worked-sep"><span className="pp-good">actually settled — line jumped to 69.7%</span><span className="pp-good">+$4.40</span></div>
+            </div>
+          )}
           <p>
-            The barrier was touched by a goal that repriced the line all the way to <b>69.7%</b>. The
-            win-shares, bought at 35¢, liquidated at 69.7¢ — turning a position that was <em>designed</em>
-            to break even into a <b>+$4.40</b> gain, against a <b>−$2.08</b> loss the same outcome would
-            have cost unhedged. That gap is the overshoot working in the house's favour.
+            Jump overshoot is why the realized number usually beats the projection: the position
+            liquidates at the overshooting print, not at B. That gap is the flip side of the δ discount —
+            both come from the same jumps, and both land in the house's favour.
           </p>
           <div className="pp-callout pp-warn">
             <b>Where net-zero leaks (honestly).</b> Three residuals keep this “≈ 0,” not “= 0”:
@@ -236,6 +307,42 @@ export function WhitePaper() {
             Touchline sizes and prices the hedge off the TxLINE win price today. That's a defensible
             proxy — for a liquid match a real venue and the de-margined line agree — and the venue field
             in the hedge ledger is a seam a Polymarket or Kalshi adapter drops straight into.
+          </div>
+        </section>
+
+        {/* the drama theorem */}
+        <section id="s4b" className="pp-sec">
+          <h2><span className="pp-num">✦</span> The drama theorem — the instrument family's ceiling</h2>
+          <p>
+            Define a match's <b>drama</b> as the realized quadratic variation of the anchored
+            probability path: <span className="m">Σ (ΔM)²</span> summed over ticks. A dull
+            favourite-holds match is ≈ 0; a comeback thriller is enormous. For any martingale ending
+            in {"{0,1}"} from <span className="m">p</span> (using <span className="m">M_T² = M_T</span>):
+          </p>
+          <div className="pp-eq pp-eq-hero">E[ Σ(ΔM)² ] = p(1−p)</div>
+          <p>
+            <b>The fair price of drama is p(1−p)</b> — model-free and exact, no discount needed in
+            expectation. In-play, the expected <em>remaining</em> drama is <span className="m">M_t(1−M_t)</span>,
+            updating with every tick. Across all three 1X2 lines, a whole match's fair drama is{" "}
+            <span className="m">1 − Σ p_o²</span> — the Gini impurity of the kickoff probability vector:
+            a three-way coin flip carries maximal drama by construction, a foregone conclusion almost none.
+          </p>
+          <p>And the hedge is <b>exact</b> — a discrete algebraic identity, no Itô, no discretization error:</p>
+          <div className="pp-eq">Σ(ΔM)² = M_T − p² − 2 Σ M_i·ΔM_i</div>
+          <p>
+            So the house replicates a drama payout <em>pathwise</em>: hold 1 win-share, run a dynamic
+            position of <span className="m">−2M_t</span> win-shares rebalanced at each tick, carry{" "}
+            <span className="m">−p²</span> in cash. Since the line only moves at ticks, per-tick
+            rebalancing makes the replication exact — a <b>stronger</b> result than the touch hedge.
+          </p>
+          <div className="pp-callout">
+            <b>Why only a proof-carrying feed can settle this.</b> Settling <span className="m">Σ(ΔM)²</span>{" "}
+            means proving every term of the sum — thousands of ticks. TxLINE's Merkle anchoring makes each
+            term provable; validateStatV3-style multiproofs (or a minute-sampled grid, or optimistic
+            resolution where the <em>challenge</em> is a set of tick proofs) make the settlement tractable.
+            Tradable Drama Swaps, the peak ladder (differences of touch quotes), and time-boxed touches
+            (priced empirically from the corpus first-passage distribution) are the roadmap — the family of
+            instruments only an anchored odds feed can settle honestly.
           </div>
         </section>
 

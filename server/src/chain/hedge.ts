@@ -259,6 +259,17 @@ export function realizeHedge(marketKey: string, barrierBps: number, outcome: "ye
   return rec;
 }
 
+/** The most recently REALIZED hedge — a real booked settlement for the white paper's worked example. */
+export function latestRealized(): (HedgeRealized & { marketKey: string; kind: BetKind; side: Side; barrierBps: number; venueP: number; shares: number }) | null {
+  // newest realized settlement that has a hedge lot (parlay non-first legs carry none)
+  const entries = Object.entries(ledger.realized).sort((a, b) => b[1].ts - a[1].ts);
+  for (const [marketKey, rec] of entries) {
+    const lot = lotsFor(marketKey)[0];
+    if (lot) return { ...rec, marketKey, kind: lot.kind ?? "up", side: lot.side, barrierBps: lot.barrierBps, venueP: lot.venueP, shares: lot.shares };
+  }
+  return null;
+}
+
 /** Platform-wide roll-up for the treasury dashboard. */
 export function bookSummary(): { lots: number; shares: number; premiumsUsdc: number; hedgeCostUsdc: number; liabilityUsdc: number; markets: number } {
   const markets = new Set(ledger.lots.map((l) => l.marketKey));

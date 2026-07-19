@@ -8,7 +8,7 @@ import {
 } from "./service.js";
 import { receiptForTick } from "../proofs.js";
 import { dealerQuote, dealerQuoteKind, type BetKind } from "../dealer.js";
-import { treasury, realizeHedge, bookSummary } from "./hedge.js";
+import { treasury, realizeHedge, bookSummary, latestRealized } from "./hedge.js";
 import type { Side } from "../model.js";
 
 const KINDS: BetKind[] = ["up", "down", "band", "heartbreak", "comeback"];
@@ -307,6 +307,13 @@ export function registerChainRoutes(
 
   /** Platform-wide hedge book roll-up. */
   app.get("/api/treasury", async () => bookSummary());
+
+  /** The latest realized hedge settlement — a real booked example for the white paper. */
+  app.get("/api/hedge/latest-realized", async (req, reply) => {
+    const r = latestRealized();
+    if (!r) return reply.code(404).send({ error: "nothing settled yet" });
+    return r;
+  });
 }
 
 function fmtBet(b: import("./service.js").LedgerBet) {
