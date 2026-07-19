@@ -117,13 +117,15 @@ export const TicketPanel = memo(function TicketPanel({ version, onChanged }: { v
       )}
 
       {placed && !settledMsg && (
-        <div className="bet-msg ok">
-          Parlay live on-chain: {usd(placed.amountUsdc)} → {usd(placed.payoutUsdc)} if all {placed.legs.length} legs hit.{" "}
-          <a href={explorerTx(placed.sig)} target="_blank" rel="noreferrer">tx ↗</a>
-          <button className="btn2 settle" style={{ marginLeft: 10 }} onClick={settle} disabled={busy === "settle"}>
+        <>
+          <div className="bet-msg ok">
+            Parlay live on-chain: {usd(placed.amountUsdc)} → {usd(placed.payoutUsdc)} if all {placed.legs.length} legs hit.{" "}
+            <a href={explorerTx(placed.sig)} target="_blank" rel="noreferrer">tx ↗</a>
+          </div>
+          <button className="stakebtn place cta" onClick={settle} disabled={busy === "settle"}>
             {busy === "settle" ? "Settling…" : "Settle all legs & claim →"}
           </button>
-        </div>
+        </>
       )}
       {settledMsg && (
         <div className={`settlement ${settledMsg.outcome}`}>

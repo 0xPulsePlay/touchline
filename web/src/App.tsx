@@ -77,6 +77,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
     if (!sel || (!isLive && !simActive)) return;
     const fid = sel.fixtureId;
     let dead = false;
+    let latestSeq = 0; // drop out-of-order responses: a slow older poll must never rewind the reveal
     const tick = async () => {
       let asOf: number | undefined;
       const sim = simRef.current;
@@ -84,9 +85,10 @@ export function App({ fixtureId }: { fixtureId: number }) {
         sim.now = Math.min(sim.now + sim.speed * 2000, sim.endTs);
         asOf = sim.now;
       }
+      const seq = ++latestSeq;
       try {
         const r = await api.path(fid, { asOf, line });
-        if (dead) return;
+        if (dead || seq !== latestSeq) return;
         setPathRes(r);
         setCursor(1e9); // follow the leading edge
         // tween the reveal cursor to the new edge — continuous fast-forward, not a jump
@@ -95,7 +97,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
           cancelAnimationFrame(revealAnim.current);
           setRevealTs((prev) => {
             const from = prev ?? target;
-            if (from >= target) return target;
+            if (from >= target) return from; // never rewind the reveal edge
             const t0 = performance.now(), dur = 1850;
             let lastSet = 0;
             const stepR = (now: number) => {
