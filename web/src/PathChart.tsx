@@ -20,11 +20,13 @@ export interface PathChartProps {
   cursor: number;
   /** live/sim: stable projected axis + draw only up to this wall-ts (smooth reveal) */
   live?: { revealTs: number };
+  /** caption shown under "PRE-MATCH ODDS" when the odds don't reach the in-play window */
+  preNote?: string;
 }
 
 const W = 860, H = 310, M = { t: 18, r: 96, b: 30, l: 40 };
 
-export function PathChart({ path, startTime, timeline, names, side, barrier, cursor, live }: PathChartProps) {
+export function PathChart({ path, startTime, timeline, names, side, barrier, cursor, live, preNote }: PathChartProps) {
   const pw = W - M.l - M.r, ph = H - M.t - M.b;
   const lastTs = path[path.length - 1]?.ts ?? startTime;
 
@@ -33,12 +35,14 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
     [timeline, lastTs, pw, live ? 1 : 0],
   );
 
-  // "pre-match mode": the fixture has no REAL in-play data yet — either it's upcoming, or it started
-  // but the live feed never landed in the corpus (projected phases don't count as real play). Render
-  // the FULL pre-match odds series over a plain time axis instead of squashing 40+ hours of ticks
-  // into the compressed 20-minute PRE band (which left only a handful of points and looked empty).
-  const hasRealPlay = !!scale && scale.segments.some((s) => s.playing && !s.projected);
-  const preMatch = !hasRealPlay;
+  // "pre-match mode": the ODDS don't reach the in-play window. Either there are no in-play phases
+  // (upcoming), or the fixture reports phases/score from metadata but no in-play odds tick was ever
+  // recorded (a data gap — the 1X2 feed stops before kickoff). Projected phases never count. Render
+  // the FULL pre-match odds series over a plain time axis instead of the match-clock axis, which
+  // would filter every (pre-kickoff) tick out of view and leave the graph blank.
+  const firstPlay = scale?.segments.find((s) => s.playing && !s.projected);
+  const hasInPlayData = !!firstPlay && path.some((p) => p.ts >= firstPlay.startTs);
+  const preMatch = !hasInPlayData;
 
   const firstTs = path[0]?.ts ?? startTime;
   const X = preMatch
@@ -137,7 +141,7 @@ export function PathChart({ path, startTime, timeline, names, side, barrier, cur
             </g>
           ))}
           <text x={M.l} y={M.t - 4} fill="var(--ink-3)" style={{ fontSize: 9, letterSpacing: "0.08em" }}>
-            PRE-MATCH ODDS · awaiting kickoff feed
+            PRE-MATCH ODDS · {preNote ?? "in-play odds unavailable"}
           </text>
         </>
       ) : (

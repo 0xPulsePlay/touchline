@@ -181,10 +181,13 @@ export function App({ fixtureId }: { fixtureId: number }) {
     return cur;
   };
 
-  // wall-clock says "live", but no in-play tick has landed for this fixture (static corpus, or the
-  // kickoff feed simply hasn't delivered): present it honestly as pre-match awaiting the feed rather
-  // than a stuck "KO −262′" countdown next to a LIVE badge.
-  const awaitingFeed = isLive && !!sel && !!pathRes && !pathRes.path.some((p) => p.ts >= sel.startTime);
+  // the 1X2 odds never reach the in-play window for this fixture — either it hasn't kicked off, or
+  // its metadata reports a result/phases but no in-play odds tick was recorded (a corpus data gap).
+  const noInPlayData = !!sel && !!pathRes && !pathRes.path.some((p) => p.ts >= sel.startTime);
+  // wall-clock says "live" but nothing has landed: show pre-match, not a stuck "KO −262′" countdown.
+  const awaitingFeed = isLive && noInPlayData;
+  // caption for the pre-match chart: a future match is waiting on its feed; a past one simply has none.
+  const preNote = sel && sel.startTime > now ? "awaiting kickoff feed" : "no in-play odds for this fixture";
 
   const liveEdgeLabel = (() => {
     if (!sel) return "";
@@ -237,7 +240,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
             <section className="panel">
               <div className="panelhead">
                 <h2>Probability path</h2>
-                {sel.isFinal && !simUi && (
+                {sel.isFinal && !simUi && !noInPlayData && (
                   <button className="simbtn" onClick={startSim} title="replay this match through the live pipeline">
                     ⚡ Simulate live
                   </button>
@@ -254,6 +257,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
                     barrier={barrier}
                     cursor={simUi || isLive ? 1e9 : visibleCursor}
                     live={simUi || isLive ? { revealTs: revealTs ?? (pathRes.path[pathRes.path.length - 1]?.ts ?? sel.startTime) } : undefined}
+                    preNote={preNote}
                   />
                   {simUi || isLive ? (
                     <div className="livebar">
