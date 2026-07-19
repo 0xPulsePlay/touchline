@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { api, type ParlayQuote, type ParlayResult } from "../api.js";
 import { flag } from "../flags.js";
 import { sessionId } from "../session.js";
@@ -12,7 +12,7 @@ const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?clust
  * The parlay ticket: legs collected from any match page ("＋ Parlay leg"), combined multiplier =
  * the product of leg prices, one stake, one on-chain escrow, pays only if EVERY leg hits.
  */
-export function TicketPanel({ version, onChanged }: { version: number; onChanged: () => void }) {
+export const TicketPanel = memo(function TicketPanel({ version, onChanged }: { version: number; onChanged: () => void }) {
   const sid = sessionId();
   const [legs, setLegs] = useState<TicketLeg[]>(readTicket());
   const [quote, setQuote] = useState<ParlayQuote | null>(null);
@@ -135,4 +135,4 @@ export function TicketPanel({ version, onChanged }: { version: number; onChanged
       {msg && <div className="bet-msg ok">{msg}</div>}
     </section>
   );
-}
+});

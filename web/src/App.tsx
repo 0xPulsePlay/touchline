@@ -97,9 +97,10 @@ export function App({ fixtureId }: { fixtureId: number }) {
             const from = prev ?? target;
             if (from >= target) return target;
             const t0 = performance.now(), dur = 1850;
+            let lastSet = 0;
             const stepR = (now: number) => {
               const f = Math.min(1, (now - t0) / dur);
-              setRevealTs(from + f * (target - from));
+              if (now - lastSet > 32 || f >= 1) { setRevealTs(from + f * (target - from)); lastSet = now; }
               if (f < 1 && !dead) revealAnim.current = requestAnimationFrame(stepR);
             };
             revealAnim.current = requestAnimationFrame(stepR);
@@ -159,6 +160,12 @@ export function App({ fixtureId }: { fixtureId: number }) {
     return () => cancelAnimationFrame(raf.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, pathRes]);
+
+  const onTicketChange = useMemo(() => () => setTicketV((v) => v + 1), []);
+  const revealCoarse = useMemo(
+    () => (revealTs != null ? Math.floor(revealTs / 1000) * 1000 : null),
+    [revealTs != null ? Math.floor(revealTs / 1000) : null],
+  );
 
   const names = useMemo(() => {
     if (!sel) return { part1: "", draw: "Draw", part2: "" };
@@ -285,7 +292,7 @@ export function App({ fixtureId }: { fixtureId: number }) {
                       {simUi && (
                         <>
                           <span className="speeds">
-                            {[60, 180, 600].map((s) => (
+                            {[10, 15, 30, 60, 180, 600].map((s) => (
                               <button key={s} className={`btn2${simUi.speed === s ? " on" : ""}`}
                                 onClick={() => setSimSpeed(s)}>{s}×</button>
                             ))}
@@ -338,14 +345,14 @@ export function App({ fixtureId }: { fixtureId: number }) {
               setBarrier2={setBarrier2}
               names={names}
               path={pathRes?.path}
-              revealTs={simUi || isLive ? (revealTs ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? null) : null}
+              revealTs={simUi || isLive ? (revealCoarse ?? pathRes?.path[pathRes.path.length - 1]?.ts ?? null) : null}
               simActive={!!simUi || isLive}
               fullEndTs={fullEndRef.current}
-              onTicket={() => setTicketV((v) => v + 1)}
+              onTicket={onTicketChange}
               line={line}
             />
 
-            <TicketPanel version={ticketV} onChanged={() => setTicketV((v) => v + 1)} />
+            <TicketPanel version={ticketV} onChanged={onTicketChange} />
 
             <details className="panel cal-acc">
               <summary><h2>Calibration</h2><span className="cal-chev" aria-hidden="true">▾</span></summary>

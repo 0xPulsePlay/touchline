@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { api, type ActivityBet, type BetKind } from "../api.js";
 
 const KICON: Record<BetKind, string> = { up: "↗", down: "↘", band: "⇅", heartbreak: "💔", comeback: "🔄" };
@@ -8,7 +8,7 @@ const pctBps = (b: number) => `${(b / 100).toFixed(1)}%`;
  * Standalone live-trades tape for the desktop left column (the graph side). Self-contained poll —
  * shows ALL kinds (the whole tape), unlike the ticket's kind-scoped feed. Desktop-only via CSS.
  */
-export function ActivityFeed() {
+export const ActivityFeed = memo(function ActivityFeed() {
   const [activity, setActivity] = useState<ActivityBet[]>([]);
   useEffect(() => {
     const tick = () => api.activity().then(setActivity).catch(() => {});
@@ -32,4 +32,4 @@ export function ActivityFeed() {
       </div>
     </section>
   );
-}
+});

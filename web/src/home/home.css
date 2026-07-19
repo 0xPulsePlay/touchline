@@ -408,3 +408,21 @@
 
 /* loading state: the skeleton grid needs the same breathing room a section rubric provides */
 .tl-controls + .tl-grid { margin-top: 26px; }
+
+/* balanced two-column hero: copy left, quiet stat stack filling the right */
+.tl-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 48px; }
+.tl-hero-main { min-width: 0; }
+.tl-hero-main .tl-hero-paper { display: inline-block; margin-top: 16px; font-size: 0.78rem; }
+.tl-hero-side { display: flex; flex-direction: column; gap: 14px; flex: none; text-align: right;
+  padding-left: 40px; border-left: 1px solid var(--line-soft); }
+.tl-stat { display: flex; flex-direction: column; gap: 2px; }
+.tl-stat-n { font-size: 1.35rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.tl-stat.live .tl-stat-n { color: var(--live); }
+.tl-stat-k { font-size: 0.64rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+@media (max-width: 700px) {
+  .tl-hero { flex-direction: column; align-items: stretch; gap: 20px; }
+  .tl-hero-side { flex-direction: row; justify-content: space-between; text-align: left;
+    padding-left: 0; border-left: none; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+  .tl-stat-n { justify-content: flex-start; }
+}

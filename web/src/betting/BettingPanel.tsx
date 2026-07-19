@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ActivityBet, type BetKind, type ChainState, type DealerQuote, type Fixture, type PathPoint, type ResolveResult, type Side, type Treasury } from "../api.js";
 import { flag } from "../flags.js";
 import { sessionId } from "../session.js";
@@ -39,7 +39,7 @@ export interface BettingPanelProps {
   line?: number;
 }
 
-export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs, onTicket, line = 0 }: BettingPanelProps) {
+export const BettingPanel = memo(function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, setBarrier, barrier2, setBarrier2, names, path, revealTs, simActive, fullEndTs, onTicket, line = 0 }: BettingPanelProps) {
   const sid = sessionId();
   const [chain, setChain] = useState<ChainState | null>(null);
   const [bal, setBal] = useState<number | null>(null);
@@ -373,4 +373,4 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
       </div>
     </section>
   );
-}
+});

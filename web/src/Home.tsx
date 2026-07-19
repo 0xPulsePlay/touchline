@@ -64,24 +64,31 @@ export function Home() {
       <div className="tl-home">
         <div className="tl-home-inner">
           <header className="tl-hero">
-            <div className="tl-hero-glow" aria-hidden="true" />
-            <p className="tl-hero-kicker">Live path markets · Solana-settled</p>
-            <h1 className="tl-hero-title">
-              Trade the probability path. <span className="tl-hero-em">Set the barrier.</span>
-            </h1>
-            <p className="tl-hero-lede">
-              Trade whether a team&apos;s win probability touches a defined level before full time.
-              Prices follow the <b>p/B martingale bound</b>; settlement uses a Merkle proof of one
-              odds tick anchored on Solana.
-            </p>
-            <div className="tl-hero-stats mono">
-              <span className={`tl-hero-live${stats.live === 0 ? " idle" : ""}`}><span className="tl-dot" aria-hidden="true" /> <b>{stats.live}</b> live markets</span>
-              <span className="tl-sep" aria-hidden="true" />
-              <span><b>{stats.count || "—"}</b> listed fixtures</span>
-              <span className="tl-sep" aria-hidden="true" />
-              <span><b>{fmtTicks(stats.ticks)}</b> verified ticks</span>
-              <span className="tl-sep" aria-hidden="true" />
+            <div className="tl-hero-main">
+              <p className="tl-hero-kicker">Live path markets · Solana-settled</p>
+              <h1 className="tl-hero-title">
+                Trade the probability path. <span className="tl-hero-em">Set the barrier.</span>
+              </h1>
+              <p className="tl-hero-lede">
+                Trade whether a team&apos;s win probability touches a defined level before full time.
+                Prices follow the <b>p/B martingale bound</b>; settlement uses a Merkle proof of one
+                odds tick anchored on Solana.
+              </p>
               <a className="tl-hero-paper" href="#/paper">Pricing methodology →</a>
+            </div>
+            <div className="tl-hero-side mono" aria-label="market stats">
+              <div className={`tl-stat${stats.live === 0 ? "" : " live"}`}>
+                <span className="tl-stat-n">{stats.live > 0 && <span className="tl-dot" aria-hidden="true" />}{stats.live}</span>
+                <span className="tl-stat-k">live markets</span>
+              </div>
+              <div className="tl-stat">
+                <span className="tl-stat-n">{stats.count || 0}</span>
+                <span className="tl-stat-k">listed fixtures</span>
+              </div>
+              <div className="tl-stat">
+                <span className="tl-stat-n">{fmtTicks(stats.ticks)}</span>
+                <span className="tl-stat-k">verified ticks</span>
+              </div>
             </div>
           </header>
 
