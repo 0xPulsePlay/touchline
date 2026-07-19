@@ -187,23 +187,35 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
   };
 
   return (
-    <section className="panel bet">
+    <section className="panel bet trading-ticket">
       <div className="bet-head">
         <h2>Predict the path <span className="devnet">devnet</span></h2>
         {bal !== null && <span className="mono balmini" title="session balance">{bal.toFixed(2)} <span className="tick">USDC</span></span>}
       </div>
 
+      <div className="market-question">
+        <span className="ticket-label">Market question</span>
+        <div className="q-line">
+          <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{meta.blurb(sideName, barrier, barrier2)}</b></span>
+          {quote && !quote.valid && <span className="gate">{quote.reason}</span>}
+        </div>
+      </div>
+
       {/* the five instruments */}
-      <div className="kindtabs" role="tablist" aria-label="market type">
-        {(Object.keys(KIND_META) as BetKind[]).map((k) => (
-          <button key={k} role="tab" aria-selected={kind === k} className={`ktab${kind === k ? " on" : ""}`} onClick={() => { setKind(k); setSettled(null); }}>
-            <span className="kicon" aria-hidden="true">{KIND_META[k].icon}</span> {KIND_META[k].label}
-          </button>
-        ))}
+      <div className="instrument-picker">
+        <span className="ticket-label">Contract type</span>
+        <div className="kindtabs" role="tablist" aria-label="market type">
+          {(Object.keys(KIND_META) as BetKind[]).map((k) => (
+            <button key={k} role="tab" aria-selected={kind === k} className={`ktab${kind === k ? " on" : ""}`} onClick={() => { setKind(k); setSettled(null); }}>
+              <span className="kicon" aria-hidden="true">{KIND_META[k].icon}</span> {KIND_META[k].label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* side + barrier(s) */}
       <div className="picker">
+        <span className="ticket-label">Outcome and barrier</span>
         <div className="seg" role="group" aria-label="side">
           {(["part1", "draw", "part2"] as Side[]).filter((k) => names[k] !== "").map((k) => (
             <button key={k} className={side === k ? "on" : ""} onClick={() => setSide(k)}>
@@ -233,10 +245,6 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
       </div>
 
       <div className="quote-card">
-        <div className="q-line">
-          <span className="q-label">{side === "draw" ? "🤝" : flag(sideName)} <b>{meta.blurb(sideName, barrier, barrier2)}</b></span>
-          {quote && !quote.valid && <span className="gate">{quote.reason}</span>}
-        </div>
         {quote?.valid && (
           <div className="q-body">
             <div className="q-price"><span className="big mono">{pctBps(quote.priceBps)}</span><span className="q-sub">house price</span></div>
@@ -257,22 +265,24 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
               <button key={v} className={`chip${stake === v ? " on" : ""}`} onClick={() => setStake(v)}>${v}</button>
             ))}
           </div>
-          <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
-            {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
-          </button>
-          <button className="btn2" disabled={!quote?.valid} title="add this selection to the parlay ticket"
-            onClick={() => {
-              addLeg({
-                fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
-                side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
-              });
-              onTicket?.();
-            }}>
-            ＋ Parlay leg
-          </button>
-          {lastBet.current && !settled && !simActive && (
-            <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
-          )}
+          <div className="execution-actions">
+            <button className="stakebtn place" disabled={!quote?.valid || busy === "bet" || (bal ?? 0) < stake} onClick={placeBet}>
+              {busy === "bet" ? "Confirming…" : `Place $${stake} prediction`}
+            </button>
+            <button className="btn2" disabled={!quote?.valid} title="add this selection to the parlay ticket"
+              onClick={() => {
+                addLeg({
+                  fixtureId: fixture.fixtureId, fixtureName: `${names.part1} v ${names.part2}`,
+                  side, sideName, kind, barrier, barrier2: kind === "band" ? barrier2 : undefined,
+                });
+                onTicket?.();
+              }}>
+              ＋ Parlay leg
+            </button>
+            {lastBet.current && !settled && !simActive && (
+              <button className="btn2 settle" onClick={() => settle(false)} disabled={busy === "settle"}>{busy === "settle" ? "Settling…" : "Settle & claim →"}</button>
+            )}
+          </div>
         </div>
         {quote?.valid && (bal ?? 0) < stake && busy !== "bet" && (
           <div className="bet-hint">Balance too low — grab devnet funds from the <b>wallet</b> in the top bar.</div>
@@ -334,10 +344,15 @@ export function BettingPanel({ fixture, side, setSide, kind, setKind, barrier, s
       <div className="activity">
         <div className="act-head">{meta.icon} {meta.label} — live activity</div>
         {scoped.length === 0 && <div className="dim">No {meta.label.toLowerCase()} tickets yet — yours can be the first.</div>}
+        {scoped.length > 0 && (
+          <div className="act-columns mono" aria-hidden="true">
+            <span>Account</span><span>Contract</span><span>Price</span>
+          </div>
+        )}
         <div className="act-list">
           {scoped.slice(0, 8).map((b) => (
             <div className={`act-row${b.bot ? " bot" : " you"}`} key={b.sig}>
-              <span className="act-who">{b.bot ? "🤖" : "🫵"} {b.label}</span>
+              <span className="act-who"><span className={`act-origin${b.bot ? " bot" : " you"}`}>{b.bot ? "BOT" : "YOU"}</span> {b.label}</span>
               <span className="act-what mono">${b.amountUsdc} · {KIND_META[b.kind ?? "up"].icon} {pctBps(b.barrierBps)}{b.barrier2Bps ? `↔${pctBps(b.barrier2Bps)}` : ""}</span>
               <span className="act-odds mono">@ {pctBps(b.priceBps)}</span>
             </div>
