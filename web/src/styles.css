@@ -534,3 +534,36 @@ a.brand:hover { opacity: 0.82; }
 
 .linepick { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
   color: var(--ink); font-size: 0.78rem; font-family: Futura, "Century Gothic", sans-serif; cursor: pointer; }
+
+/* ── match page desktop split: graph + trades anchored LEFT, markets RIGHT ── */
+/* mobile: the wrappers disappear entirely — DOM order and layout are exactly as before */
+.dcols, .dleft, .dright { display: contents; }
+.tape { display: none; } /* the standalone trades tape is a desktop-only element */
+
+@media (min-width: 1180px) {
+  .main.detail { max-width: 1440px; }
+  .dcols {
+    display: grid;
+    grid-template-columns: minmax(0, 900px) minmax(380px, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+  /* the graph + trades stay anchored while the markets column scrolls */
+  .dleft { display: block; position: sticky; top: 62px; }
+  .dright { display: block; min-width: 0; }
+  .tape { display: block; }
+  /* the ticket keeps its own kind-scoped feed on mobile; on desktop the tape owns trades */
+  .dright .activity { display: none; }
+}
+
+@media (min-width: 1180px) {
+  /* the right rail is narrower than the old full column — let controls wrap */
+  .dright .kindtabs { flex-wrap: wrap; }
+  .dright .bet-actions { flex-wrap: wrap; }
+  .dright .stakebtn.place { flex: 1 1 100%; } /* CTA gets its own full-width row */
+}
+
+@media (min-width: 1180px) {
+  .dright .stakebtn.place { min-width: 0; }
+  .dright .stakein { width: 60px; }
+}

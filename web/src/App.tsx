@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type BetKind, type Calibration, type Fixture, type PathResponse, type Side } from "./api.js";
 import { BettingPanel } from "./betting/BettingPanel.js";
 import { TicketPanel } from "./betting/TicketPanel.js";
+import { ActivityFeed } from "./betting/ActivityFeed.js";
 import { flag } from "./flags.js";
 import { groupOf } from "./groups.js";
 import { AppBar } from "./AppBar.js";
@@ -235,7 +236,8 @@ export function App({ fixtureId }: { fixtureId: number }) {
             <div className="empty">Loading match…</div>
           )
         ) : (
-          <>
+          <div className="dcols">
+            <div className="dleft">
             <div className="matchhead">
               <span className="vs display">
                 {flag(sel.participant1)} {sel.participant1} {headScore} {sel.participant2} {flag(sel.participant2)}
@@ -320,6 +322,10 @@ export function App({ fixtureId }: { fixtureId: number }) {
               )}
             </section>
 
+            <ActivityFeed />
+            </div>
+
+            <div className="dright">
             <BettingPanel
               fixture={sel}
               side={side}
@@ -366,7 +372,8 @@ export function App({ fixtureId }: { fixtureId: number }) {
                 <div className="empty">Loading calibration…</div>
               )}
             </section>
-          </>
+            </div>
+          </div>
         )}
       </main>
     </>
