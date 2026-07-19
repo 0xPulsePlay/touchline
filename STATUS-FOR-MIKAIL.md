@@ -1,141 +1,77 @@
-# Night-shift handoff — the hedge leg + the white paper (2026-07-18, shift #2)
+# Night-shift #3 handoff — DEMO DAY (Sun Jul 19 · deadline 23:59 UTC = 19:59 local)
 
-## TL;DR
+## ⏰ Your schedule today
 
-Tonight's three asks are **done and browser-verified**:
+1. **Morning**: review this + the docs → record the ≤5-min demo video (flows + script below).
+2. **You deploy** (your call from last night — everything runs localhost right now).
+3. **15:00 local — THE FINAL (Spain v Argentina), the last live-capture window.** The ingestion
+   worker is up and self-healing: in-play odds will stream live. Capture footage.
+4. **Submit before 19:59 local.** Checklist: repo public (push is yours), video link, deployed
+   link, technical doc (docs/TECHNICAL-WRITEUP.md), feedback section (in it).
 
-1. **One-click betting.** No more "create a market, then bet." Pick a side, drag the barrier, hit
-   **Bet $2/$5/$10** — the market is created, priced, co-signed, escrowed, and hedged in one action.
-2. **The real hedge leg.** Every ticket is now offset by a live **win-share replication** recorded in
-   a hedge ledger, with settlement accounting that shows the house's P&L is *outcome-independent* —
-   the same small residual whether the barrier is touched or not, plus the jump-overshoot upside.
-   There's a **House Hedge Book** panel on the market page that shows it live and settles in front of you.
-3. **The white paper.** A new in-app page at **`/#/paper`** derives the whole mechanism — the `p/B`
-   touch bound, the empirically-measured discount (live calibration table), the net-zero hedge
-   replication (state table + worked example + honest leaks), and on-chain settlement. Linked from
-   the home hero ("Read the math →") and from every quote ("· how?").
+## TL;DR — everything you asked for last night is built and proven on devnet
 
-Everything from shift #1 still stands: real Anchor program, mock-USDC escrow, mainnet-verified Merkle
-settlement, autonomous bots. Still on a **local validator** — the devnet deploy remains blocked on
-~0.75 SOL (see §Blocker); that's a 2-minute you-only step.
+1. **Five instruments, one theorem** — the bet-type tabs: **↗ Touch up** (p/B·δ) · **↘ Touch down**
+   ((1−p)/(1−A)·δ) · **⇅ Race** ("hits U before L", gambler's-ruin (p−L)/(U−L), EXACT, no discount)
+   · **💔 Heartbreak** ("touches B and still loses", (p/B)(1−B)·δ) · **🔄 Comeback** (the mirror).
+   All priced in dealer.ts, all hedged with self-financing replicating positions, all with
+   kind-aware Merkle resolution. **69 tests green.**
+2. **THE demo moment works** (browser-proven): place a heartbreak on England semifinal (21.1% →
+   4.73×) → ⚡ Simulate live → the touch trips the watcher → **auto-resolves on devnet with the
+   mainnet-verified Merkle proof** → settlement card with explorer links (settlement tx, bet tx,
+   mainnet anchor PDA) → payout claimed (95 → 118.66) → **house hedge net +$3.23 vs −$18.66
+   unhedged**. Heartbreak/comeback wait for the sim's full-time whistle before settling.
+3. **Parlays are real on-chain** — new `place_parlay`/`claim_parlay` instructions (redeployed to
+   devnet), 2–4 legs, one fully-collateralized escrow, ALL-legs-YES to win. Proven: 2-leg $5 at
+   5.04× → both legs Merkle-resolved → claim paid $25.20 exactly. UI: "＋ Parlay leg" on any
+   market builds a cross-match ticket (localStorage).
+4. **Probability lines beyond 1X2** — line picker on the chart: Match odds ↔ **Over/Under 2.5
+   goals** (same martingale, same theorem, same hedges — the point writes itself).
+5. **Faucet is off the betting page** — AppBar wallet menu with SOL/USDC rows styled like a real
+   wallet; "Get devnet funds" lives in the popover. Freeform stake + chips. Explorer links
+   everywhere.
+6. **White paper upgraded** (`/#/paper`): instrument-family pricing table, per-kind replication
+   table, **the drama theorem** (E[Σ(ΔM)²] = p(1−p), remaining-drama gauge live on the chart,
+   exact pathwise replication — "the family only a proof-carrying feed can settle"), and the
+   §4 worked example now pulls a **real settled ticket from the live hedge ledger**.
+7. **Docs for you**: `docs/DEMO-FLOWS.md` (recording order + pre-flight checklist),
+   `docs/DEMO-SCRIPT.md` (the spikes: *"Path markets trade the drama, not the result"* · *"UMA
+   resolves disputes by token-holder vote; ours by cryptography — the challenge is a Merkle
+   proof, or it's nothing"* · the heartbreak line), `docs/TECHNICAL-WRITEUP.md` (full math incl.
+   liquidity/hedging across all markets, endpoints used, feedback section, CPI honesty note).
 
-## The hedge leg — what it actually does (this is the story to tell)
+## Overnight bug war stories (all fixed)
 
-When the house writes a "touches B" ticket owing payout **P**, it immediately buys **P/B win-shares**
-at the current win price **p** (cost `P·(p/B)`). A win-share pays 1 if the team wins and trades at the
-win probability meanwhile, so:
+- **Bots went broke** (fauceted once, never topped up) → "Simulation failed: insufficient funds";
+  now solvent + varied (sides/barriers/jitter/dedupe) so the feed reads like a market.
+- **Program validates side ≤ 2** — kind encoding moved into fixture_id's high bits
+  (fid = fixtureId | line<<32 | epoch<<40 | kind<<48). No program change needed for kinds/lines.
+- **Legacy-era PDA collision** (old-mint market on devnet → WrongMint) → mint-era byte folded
+  into every market PDA; fresh chain state can never collide again; epoch bump = re-runnable
+  markets for repeated demo takes.
+- **Public devnet RPC 429s** → singleton connection, bots at 45s cadence, sparse solvency checks,
+  client polls at 30s, retry-with-backoff on bet placement, quote re-poll (no dead buttons).
+- **"Touch either edge" band is degenerate** (a {0,1}-terminal martingale always exits any
+  interior band) → replaced with the RACE, which is strictly better: exact closed form, exact
+  hedge, and even the NO side settles cryptographically (first tick out the bottom).
 
-- **Touch** → at the touch the win price is B, the shares are worth `(P/B)·B = P` → they fund the payout.
-- **No touch** → the team never won, shares expire worthless → the house owes nothing.
+## How to run (everything currently UP)
 
-Either way the big directional risk is gone. **Proven live in the browser** on England–Argentina:
+- platform :3001 + ingestion worker (self-healing gap-check) · touchline API :4617 (devnet,
+  bots on) · web :4618. Program `6kZYYdZLJcsU2ZBKKthc7BpddUiYdTbAtGigS2bJc53K` live on devnet
+  (authority ~9.4 SOL).
+- Restart API: `cd server && TOUCHLINE_BOTS=1 pnpm start` · web: `cd web && pnpm dev` ·
+  worker: `pnpm --filter @txline/api worker` (in txline-explorer).
+- Demo reset: bump epoch (the market-era system means you can re-run the same barrier by
+  passing `epoch` in the bet body; fresh session id = fresh wallet).
 
-| | this bet |
-|---|---|
-| Stake / payout | $10 → $18.91 if it touches |
-| Hedge taken | 31.5 win-shares @ 35¢ = **$11.16** |
-| **Unhedged**, if it touches | **−$8.91** (pay $18.91, keep $10) |
-| **Hedged**, touch *or* no-touch | **−$1.16** either way (outcome-independent) |
-| **Actually settled** — line jumped to **69.7%** | shares liquidated at $21.96 → **+$1.89** |
+## Honest state / open items
 
-The hedge converted an **$8.91 loss into a $1.89 gain**, captured entirely from the jump overshoot —
-the exact "one-sided residual in the house's favour" the discount is priced against. Settlement was
-from a **mainnet-verified Merkle proof** (PDA 7KRmBRjn…), payout claimed (balance 100 → 90 → 108.91).
-
-**Honest framing (also in the paper):** the hedged residual is *slightly negative before overshoot*
-(the 0.87 discount gives users better-than-fair odds, a cost of carry ≈ 11.5% of premium), and is
-recovered by jump overshoot on real touches. So the claim is **"≈ 0 / outcome-independent," not
-"provably = 0."** The white paper's §4 says exactly this, including the three leaks (jump overshoot,
-execution slippage, settlement-variable mismatch) and the venue-proxy caveat.
-
-**Venue price.** The hedge is sized/priced off the TxLINE de-margined win price today (efficient-market
-proxy). `hedge.ts` marks the source in a `venue` field so a real Polymarket/Kalshi adapter drops in
-per-market without touching the accounting.
-
-## What's new tonight (files)
-
-```
-server/src/chain/hedge.ts        NEW — replication engine + hedge ledger + treasury + settlement realize
-server/src/chain/hedge.test.ts   NEW — 6 tests proving the replication identity (self-financing, overshoot, no-touch)
-server/src/chain/service.ts      placeBet now records a hedge lot on every bet (stake, venue p, shares, cost)
-server/src/chain/routes.ts       realizeHedge on resolve; /api/treasury/:key + /api/treasury; treasury folded into /api/onchain/markets
-server/src/chain/bots.ts         bots pass their real win price so their lots hedge correctly
-web/src/paper/WhitePaper.tsx     NEW — the in-app mechanism paper (live calibration fetch)
-web/src/paper/paper.css          NEW — paper styling (theme-aware, mobile-first)
-web/src/router.tsx               new #/paper route
-web/src/betting/BettingPanel.tsx one-click picker + the House Hedge Book panel + "· how?" paper link
-web/src/App.tsx                  removed dead parimutuel code (unused quote/markets state + handlers + their fetches)
-web/src/Home.tsx                 "Read the math →" hero link
-```
-
-## What works, proven in the browser (updated)
-
-Full loop on `/#/m/18241006`, verified live tonight:
-1. **Faucet** 0 → 100 tUSDC.
-2. **One-click bet** — side selector + gated barrier slider + `52.9% → 1.89×` quote with the
-   `p/B 35.4%/60 = 59.0% × 0.87` decomposition and a "· how?" link to the paper. Bet $10 → on-chain, co-signed, escrowed.
-3. **House Hedge Book** appears instantly: "buys 31.5 win-shares @ 35¢ (cost $11.16)… unhedged a touch
-   costs −$8.91; hedged −$1.16 either way + overshoot."
-4. **Settle & claim** — "Resolved YES — mainnet-verified Merkle proof (PDA 7KRmBRjn…)"; the hedge book
-   updates to the settled line "unhedged −$8.91; hedged +$1.89 (premiums $10 − hedge $11.16 + liquidation $21.96 − payout $18.91)."
-5. **White paper** at `/#/paper` renders all six sections with the live 109-match / 327-path calibration table.
-6. **Bots** trade autonomously into the same hedge book.
-
-## Devnet deploy — DONE ✅ (2026-07-19)
-
-The program is now **live on real devnet**, no longer local-only. Deploy authority
-`5nBA87pXc63mM2i2uFfyMKa3uwRagg499xecGhpKjCyJ` was funded with ~11 devnet SOL, and:
-
-- Program `6kZYYdZLJcsU2ZBKKthc7BpddUiYdTbAtGigS2bJc53K` deployed to devnet (redeploy needed a manual
-  `solana program extend … 10240` first — the CLI's auto-extend was below devnet's 10 KB minimum).
-- API restarted pointed at devnet (dropped the `TOUCHLINE_DEVNET_RPC` local override); it re-provisioned
-  a fresh mock-USDC mint on devnet and `ready=true`.
-- Verified on devnet: faucet, dealer quote, a co-signed `$5` bet (real tx), and hedge-book recording all
-  work; bots trade on devnet. Local `solana-test-validator` has been shut down.
-
-To run the API on devnet again after a restart: `cd server && TOUCHLINE_BOTS=1 pnpm start` (no RPC override).
-
-## How to run the demo right now (local validator, fully working)
-
-The validator (:8899), API (:4617, bots on), and web (:4618) are currently running. To restart clean:
-```bash
-cd onchain && solana-test-validator --reset --quiet --ledger test-ledger &
-solana airdrop 50 5nBA87pXc63mM2i2uFfyMKa3uwRagg499xecGhpKjCyJ --url http://127.0.0.1:8899
-solana program deploy target/deploy/touchline_market.so \
-  --program-id target/deploy/touchline_market-keypair.json \
-  --keypair ~/.config/solana/pulseplay-deploy-authority.json --url http://127.0.0.1:8899
-rm -f server/.data/{chain,wallets,onchain-ledger,hedge-ledger}.json
-cd server && TOUCHLINE_DEVNET_RPC=http://127.0.0.1:8899 TOUCHLINE_BOTS=1 pnpm dev
-cd web && pnpm dev    # → http://localhost:4618
-```
-Then: home → England–Argentina → Faucet 100 → Bet $10 → watch the hedge book → Settle & claim. Also visit `/#/paper`.
-
-## What's left / rough edges (honest)
-
-1. **Devnet deploy** — the one real blocker above.
-2. **On-graph bet columns** ("Couchy-style" rising columns on the chart) — the activity feed + hedge
-   book are panels; the on-chart column viz isn't done. Data (`/api/onchain/markets` now carries
-   per-market `treasury`) is ready.
-3. **Custodial session wallets** — demo-appropriate, not the non-custodial ideal (server-held keypairs
-   funded by the house; connected Phantom is identity only).
-4. **Market re-runnability** — market PDAs are deterministic per (fixture, side, barrier); a resolved
-   market can't reopen. For repeated demos, vary the barrier or reset the validator.
-5. **Hedge venue is a proxy** — sizes off the TxLINE win price; a production build routes to a live win
-   market and eats its spread (the `venue` seam is in place).
-6. **The paper's worked example** ($6 → +$4.40) is from an earlier settle; the browser run above netted
-   $10 → +$1.89. Both real, both illustrative — left as-is since it's a "typical" figure, not a live tie-out.
-
-## Verification state
-
-`pnpm -r typecheck` clean · `pnpm --filter @touchline/server test` = **39 passing** (pricing, touch,
-markets, dealer gating, phases, **+6 new hedge replication tests**) · full on-chain lifecycle + hedge
-record→realize proven via the browser UI · white paper renders with live calibration · bots trading and
-auto-hedging. Commits are clean and incremental.
-
-## Suggested first moves when you wake
-
-1. Read `/#/paper` — it's the pitch, and it's honest. Skim §4 (the hedge) so the "outcome-independent,
-   overshoot-funded" framing is in your head for the demo.
-2. Run the betting flow and watch the House Hedge Book settle — that's the money shot for the video.
-3. Top up devnet SOL + `./deploy-devnet.sh` → the whole thing is on real devnet (judge-testable).
-4. Decide whether the on-graph columns are worth the last polish before recording.
+- **Codex UI pass** (your GPT restyle of home hero + betting card) may still be merging when you
+  read this — check `git log`. If absent, the current UI is the functional version.
+- Parlay hedge is leg-1 rolling (documented approximation); per-leg roll-forward is roadmap.
+- Heartbreak δ uses the touch discount (direct heartbreak calibration from the corpus is a
+  30-min job if you want the second table).
+- AH line + drama leaderboard + on-graph bet columns: not built (time-boxed out).
+- Devnet RPC latency: bets take 5–15s; the loading states cover it, but record with patience.
+- Non-custodial signing remains roadmap (custodial session wallets + Phantom identity).
