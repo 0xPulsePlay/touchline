@@ -33,8 +33,8 @@ importers:
         specifier: file:../../txline-explorer/packages/client-sdk
         version: file:../txline-explorer/packages/client-sdk
       '@txline/verify':
-        specifier: file:../../txline-explorer-validation-lab/packages/verify
-        version: file:../txline-explorer-validation-lab/packages/verify(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+        specifier: file:../../txline-explorer/packages/verify
+        version: file:../txline-explorer/packages/verify(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       better-sqlite3:
         specifier: ^11.5.0
         version: 11.10.0
@@ -909,8 +909,8 @@ packages:
   '@txline/client-sdk@file:../txline-explorer/packages/client-sdk':
     resolution: {directory: ../txline-explorer/packages/client-sdk, type: directory}
 
-  '@txline/verify@file:../txline-explorer-validation-lab/packages/verify':
-    resolution: {directory: ../txline-explorer-validation-lab/packages/verify, type: directory}
+  '@txline/verify@file:../txline-explorer/packages/verify':
+    resolution: {directory: ../txline-explorer/packages/verify, type: directory}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -2545,7 +2545,7 @@ snapshots:
 
   '@txline/client-sdk@file:../txline-explorer/packages/client-sdk': {}
 
-  '@txline/verify@file:../txline-explorer-validation-lab/packages/verify(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@txline/verify@file:../txline-explorer/packages/verify(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@noble/hashes': 1.8.0
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
