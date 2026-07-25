@@ -6,7 +6,10 @@ import { Connection, Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { connection, houseKeypair, DATA_DIR } from "./config.js";
 import { ensureChainSetup, ensureAta, faucetMint, tokenBalance, readChainState, BET_CAP, USDC_DECIMALS } from "./tokens.js";
 import { loadProgram, configPda, marketPda, vaultPda, betPda, parlayPda, parlayVaultPda, messageIdBytes, TOKEN_PROGRAM_ID, BN } from "./program.js";
-import { ensureWallet, fundSol, getWallet, type SessionWallet } from "./wallets.js";
+import {
+  ensureHouseSol, ensureWallet, fundSol, getWallet, SESSION_SOL_TARGET_LAMPORTS,
+  type SessionWallet,
+} from "./wallets.js";
 import { recordHedge } from "./hedge.js";
 import { KIND_IDX, type BetKind } from "../dealer.js";
 import type { Side } from "../model.js";
@@ -46,7 +49,7 @@ export interface MarketOpts { kind?: BetKind; barrier2Bps?: number; line?: numbe
 
 export interface LedgerMarket {
   key: string; fixtureId: number; side: Side; barrierBps: number; createdAt: number; status: "open" | "yes" | "no";
-  kind?: BetKind; barrier2Bps?: number; line?: number; epoch?: number;
+  kind?: BetKind; barrier2Bps?: number; line?: number; epoch?: number; cutoffTs?: number;
 }
 export interface LedgerBet {
   sig: string; marketKey: string; fixtureId: number; side: Side; barrierBps: number;
@@ -61,6 +64,18 @@ export interface LedgerParlay {
   claimed: boolean; outcome?: "yes" | "no";
 }
 interface Ledger { markets: LedgerMarket[]; bets: LedgerBet[]; parlays?: LedgerParlay[] }
+
+/** Leave enough time for ATA setup and the placement transaction after selecting a market. */
+export const MARKET_REUSE_BUFFER_SECONDS = 300;
+
+/** On-chain state is authoritative when deciding whether an existing market can take another bet. */
+export function marketCanAcceptBets(
+  status: number, cutoffTs: number, nowTs: number, authorityMatches = true,
+): boolean {
+  return authorityMatches
+    && status === 0
+    && cutoffTs > nowTs + MARKET_REUSE_BUFFER_SECONDS;
+}
 
 function loadLedger(): Ledger {
   try { return JSON.parse(readFileSync(LEDGER, "utf8")) as Ledger; } catch { return { markets: [], bets: [] }; }
@@ -81,6 +96,7 @@ let configReady = false;
 /** Ensure mints exist and init_config has run (idempotent). Returns the mock USDC mint. */
 export async function ensureReady(conn?: Connection): Promise<{ usdcMint: PublicKey; betCap: number }> {
   const c = conn ?? connection();
+  await ensureHouseSol(undefined, c);
   const state = await ensureChainSetup(c);
   const { program } = loadProgram(c);
   const cfg = configPda();
@@ -134,33 +150,67 @@ export async function ensureMarket(
   const kind = mOpts.kind ?? "up";
   const line = mOpts.line ?? 0;
   const code = sideCode(kind, side);
-  // epoch-bump past markets this ledger already resolved: deterministic PDAs mean a re-run of the
-  // same (fixture, kind, side, barrier) would land on a closed market and fail with NotOpen —
-  // instead the next epoch opens a fresh one automatically (mint-era folded in via effectiveEpoch)
+  // Deterministic PDAs mean a re-run can land on a previously resolved or expired market. Walk the
+  // entire epoch byte and use the account itself as the source of truth; the local ledger can be
+  // stale, missing, or restored independently from devnet.
   let epoch = effectiveEpoch(mOpts.epoch ?? 0);
-  let market = marketPda(chainFid(fixtureId, line, epoch, kind), code, barrierBps);
-  for (let tries = 0; tries < 16; tries++) {
-    const lm = ledger.markets.find((m) => m.key === market.toBase58());
-    if (!lm || lm.status === "open") break;
+  const nowTs = Math.floor(Date.now() / 1000);
+  let ledgerChanged = false;
+
+  for (let tries = 0; tries < 256; tries++) {
+    const fid = chainFid(fixtureId, line, epoch, kind);
+    const market = marketPda(fid, code, barrierBps);
+    const key = market.toBase58();
+    const lm = ledger.markets.find((m) => m.key === key);
+    const chainMarket = await program.account.market.fetchNullable(market) as {
+      house: PublicKey; mint: PublicKey; cutoffTs: BN; status: number;
+    } | null;
+
+    if (!chainMarket) {
+      const vault = vaultPda(market);
+      await program.methods.createMarket(new BN(fid), code, barrierBps, new BN(cutoffTs))
+        .accounts({
+          house: house.publicKey, mint: usdcMint, market, vault,
+          tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
+          rent: new PublicKey("SysvarRent111111111111111111111111111111111"),
+        }).rpc();
+      const fresh: LedgerMarket = {
+        key, fixtureId, side, barrierBps, createdAt: Date.now(), status: "open",
+        kind, barrier2Bps: mOpts.barrier2Bps, line, epoch, cutoffTs,
+      };
+      if (lm) Object.assign(lm, fresh);
+      else ledger.markets.push(fresh);
+      saveLedger(ledger);
+      return key;
+    }
+
+    const chainStatus = Number(chainMarket.status);
+    const chainCutoffTs = Number(chainMarket.cutoffTs.toString());
+    const status: LedgerMarket["status"] = chainStatus === 0 ? "open" : chainStatus === 1 ? "yes" : "no";
+    if (lm && (lm.status !== status || lm.cutoffTs !== chainCutoffTs)) {
+      lm.status = status;
+      lm.cutoffTs = chainCutoffTs;
+      ledgerChanged = true;
+    }
+
+    const authorityMatches =
+      chainMarket.mint.equals(usdcMint) && chainMarket.house.equals(house.publicKey);
+    if (marketCanAcceptBets(chainStatus, chainCutoffTs, nowTs, authorityMatches)) {
+      if (!lm) {
+        ledger.markets.push({
+          key, fixtureId, side, barrierBps, createdAt: Date.now(), status: "open",
+          kind, barrier2Bps: mOpts.barrier2Bps, line, epoch, cutoffTs: chainCutoffTs,
+        });
+        ledgerChanged = true;
+      }
+      if (ledgerChanged) saveLedger(ledger);
+      return key;
+    }
+
     epoch = (epoch + 1) & 0xff;
-    market = marketPda(chainFid(fixtureId, line, epoch, kind), code, barrierBps);
   }
-  const key = market.toBase58();
-  if (!(await c.getAccountInfo(market))) {
-    const vault = vaultPda(market);
-    await program.methods.createMarket(new BN(chainFid(fixtureId, line, epoch, kind)), code, barrierBps, new BN(cutoffTs))
-      .accounts({
-        house: house.publicKey, mint: usdcMint, market, vault,
-        tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
-        rent: new PublicKey("SysvarRent111111111111111111111111111111111"),
-      }).rpc();
-    ledger.markets.push({
-      key, fixtureId, side, barrierBps, createdAt: Date.now(), status: "open",
-      kind, barrier2Bps: mOpts.barrier2Bps, line, epoch,
-    });
-    saveLedger(ledger);
-  }
-  return key;
+  if (ledgerChanged) saveLedger(ledger);
+  throw new Error("no reusable market epoch remains for this fixture/side/barrier");
 }
 
 /** Place a co-signed fixed-odds bet (house + session both sign). Returns the tx signature. */
@@ -173,7 +223,7 @@ export async function placeBet(
   const { usdcMint } = await ensureReady(c);
   const house = houseKeypair();
   const w = await ensureWallet(sessionId, label, { bot: opts.bot }, c);
-  await fundSol(w.keypair.publicKey, Math.floor(0.05 * 1e9), c);
+  await fundSol(w.keypair.publicKey, SESSION_SOL_TARGET_LAMPORTS, c);
   const marketKey = await ensureMarket(fixtureId, side, barrierBps, cutoffTs,
     { kind: opts.kind, barrier2Bps: opts.barrier2Bps, line: opts.line, epoch: opts.epoch }, c);
   const market = new PublicKey(marketKey);
@@ -281,7 +331,7 @@ export async function placeParlay(
   const { usdcMint } = await ensureReady(c);
   const house = houseKeypair();
   const w = await ensureWallet(sessionId, label, {}, c);
-  await fundSol(w.keypair.publicKey, Math.floor(0.05 * 1e9), c);
+  await fundSol(w.keypair.publicKey, SESSION_SOL_TARGET_LAMPORTS, c);
 
   const legKeys: string[] = [];
   for (const leg of legs) {
