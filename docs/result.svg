@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img">
-  <title>Settled yes. Touchline finished 1st of 247. Payout 12,000 USDT.</title>
+  <title>Settled yes. Touchline finished 1st of 247.</title>
   <rect width="1280" height="640" fill="#f5f6f2"/>
   <rect width="1280" height="6" fill="#17643c"/>
   <text x="72" y="72" fill="#111713" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="28" font-weight="700" letter-spacing="1.6">TOUCHLINE</text>
@@ -16,11 +16,9 @@
   <circle cx="900" cy="200" r="3.5" fill="#17643c"/>
   <text x="72" y="478" fill="#17643c" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="52" font-weight="700">YES</text>
   <text x="72" y="508" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="13" letter-spacing="1.8">SETTLED</text>
-  <text x="356" y="478" fill="#111713" font-family="Menlo, ui-monospace, monospace" font-size="44" font-weight="700">247</text>
-  <text x="356" y="508" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="13" letter-spacing="1.8">SUBMISSIONS</text>
-  <text x="640" y="478" fill="#111713" font-family="Menlo, ui-monospace, monospace" font-size="44" font-weight="700">12,000</text>
-  <text x="640" y="508" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="13" letter-spacing="1.8">USDT</text>
-  <text x="924" y="478" fill="#111713" font-family="Menlo, ui-monospace, monospace" font-size="36" font-weight="700">31 Jul 2026</text>
-  <text x="924" y="508" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="13" letter-spacing="1.8">TOUCH</text>
+  <text x="456" y="478" fill="#111713" font-family="Menlo, ui-monospace, monospace" font-size="44" font-weight="700">247</text>
+  <text x="456" y="508" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="13" letter-spacing="1.8">SUBMISSIONS</text>
+  <text x="840" y="478" fill="#111713" font-family="Menlo, ui-monospace, monospace" font-size="36" font-weight="700">31 Jul 2026</text>
+  <text x="840" y="508" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="13" letter-spacing="1.8">TOUCH</text>
   <text x="72" y="584" fill="#707a73" font-family="Futura, 'Avenir Next', 'Century Gothic', 'Trebuchet MS', sans-serif" font-size="14" letter-spacing="0.4">TxODDS · Solana · Superteam</text>
 </svg>
