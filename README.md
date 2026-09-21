@@ -4,7 +4,18 @@
 > TxLINE's de-margined win probabilities, priced by a one-line theorem and **settled by a Merkle
 > proof of a single odds tick, verified against the Solana-anchored daily batch root.**
 
-Built for the TxODDS World Cup hackathon (Prediction Markets & Settlement track).
+<img src="docs/result.svg" alt="Settled yes. Touchline finished 1st of 247. Payout 12,000 USDT." width="100%">
+
+| | |
+| --- | --- |
+| Market | Touchline finishes 1st |
+| Field | 247 submissions |
+| Barrier | 1st |
+| Touch | 31 July 2026 |
+| Settlement | YES |
+| Payout | 12,000 USDT |
+| Anchor | [TxODDS announcement](https://x.com/TXODDSOfficial/status/2083192087210561558) |
+| Track | [Prediction Markets and Settlement](https://superteam.fun/earn/listing/prediction-markets-and-settlement) |
 
 ## Why this is a different kind of market
 
