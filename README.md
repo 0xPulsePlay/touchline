@@ -1,20 +1,10 @@
 # Touchline — options on the probability path
 
+> **1st of 247** in the [TxODDS World Cup hackathon](https://superteam.fun/earn/hackathon/world-cup), Prediction Markets and Settlement.
+
 > "Will England's win probability ever touch 60%?" — a new class of market: **path options** on
 > TxLINE's de-margined win probabilities, priced by a one-line theorem and **settled by a Merkle
 > proof of a single odds tick, verified against the Solana-anchored daily batch root.**
-
-<img src="docs/result.svg" alt="Settled yes. Touchline finished 1st of 247." width="100%">
-
-| | |
-| --- | --- |
-| Market | Touchline finishes 1st |
-| Field | 247 submissions |
-| Barrier | 1st |
-| Touch | 31 July 2026 |
-| Settlement | YES |
-| Anchor | [TxODDS announcement](https://x.com/TXODDSOfficial/status/2083192087210561558) |
-| Track | [Prediction Markets and Settlement](https://superteam.fun/earn/listing/prediction-markets-and-settlement) |
 
 ## Why this is a different kind of market
 
